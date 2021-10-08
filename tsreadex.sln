@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Express 15 for Windows Desktop
+VisualStudioVersion = 15.0.28307.1525
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tsreadex", "tsreadex.vcxproj", "{38A561A2-4418-4E17-92F2-3D35A7FA21C7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Debug|x64.ActiveCfg = Debug|x64
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Debug|x64.Build.0 = Debug|x64
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Debug|x86.ActiveCfg = Debug|Win32
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Debug|x86.Build.0 = Debug|Win32
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Release|x64.ActiveCfg = Release|x64
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Release|x64.Build.0 = Release|x64
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Release|x86.ActiveCfg = Release|Win32
+		{38A561A2-4418-4E17-92F2-3D35A7FA21C7}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FCD9D8B2-2C47-4439-8488-A5AA7865EF27}
+	EndGlobalSection
+EndGlobal
