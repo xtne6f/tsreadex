@@ -4,6 +4,7 @@
 CID3Converter::CID3Converter()
     : m_enabled(false)
     , m_treatUnknownPrivateDataAsSuperimpose(false)
+    , m_insertInappropriate5BytesIntoPesPayload(false)
     , m_firstPmtPid(0)
     , m_captionPid(0)
     , m_superimposePid(0)
@@ -22,6 +23,7 @@ void CID3Converter::SetOption(int flags)
 {
     m_enabled = !!(flags & 1);
     m_treatUnknownPrivateDataAsSuperimpose = !!(flags & 2);
+    m_insertInappropriate5BytesIntoPesPayload = !!(flags & 4);
 }
 
 void CID3Converter::AddPacket(const uint8_t *packet)
@@ -285,6 +287,9 @@ void CID3Converter::CheckPrivateDataPes(const std::vector<uint8_t> &pes)
     m_buf.push_back(0x80);
     m_buf.push_back(5);
     m_buf.insert(m_buf.end(), pts, pts + 5);
+    if (m_insertInappropriate5BytesIntoPesPayload) {
+        m_buf.insert(m_buf.end(), 5, 0);
+    }
     m_buf.push_back('I');
     m_buf.push_back('D');
     m_buf.push_back('3');

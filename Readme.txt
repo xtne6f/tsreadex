@@ -11,7 +11,7 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   ファイルの初期シーク量。0未満のときはファイル末尾から-(seek+1)だけ前方にシークする。
   入力がパイプ系のときは0でなければならない。
 
--l limit (kbytes/second), 0<range<=32768, default=0
+-l limit (kbytes/second), 0<=range<=32768, default=0
   入力の最大読み込み速度。0のとき無制限。
   "-n"オプションでサービスID指定する場合などで、もしそのサービスが見つからない場合には出力するものがないためストレージの
   最大負荷で読み込みが行われてしまうことになるが、このオプションで制限できる。
@@ -64,11 +64,14 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   ARIB文字スーパーをそのままか、補完するか、削除するか。
   1のとき、ストリームが存在しなければPMTの項目を補う。
 
--d flags, range=0 or 1 or 3, default=0
+-d flags, range=0 or 1 or 3 or 5 or 7, default=0
   ARIB字幕/文字スーパーを https://github.com/monyone/aribb24.js が解釈できるID3 timed-metadataに変換する。
   変換元のストリームは削除される。
-  3のとき、不明な"private data"ストリームをARIB文字スーパーとして扱う。ffmpegを経由した入力など記述子が正しく転送されて
-  いない入力に対処するもので、普通は1でよい。
+  +2(3 or 7)のとき、不明な"private data"ストリームをARIB文字スーパーとして扱う。ffmpegを経由した入力など記述子が正しく転
+  送されていない入力に対処するもので、普通は使わない。
+  +4(5 or 7)のとき、変換後のストリームに規格外の5バイトのデータを追加する。これはffmpeg 4.4時点のlibavformat/mpegts.cに
+  存在するバグを打ち消すためのもので、node-arib-subtitle-timedmetadaterの手法に基づく。出力をffmpegなどに渡す場合にのみ
+  使用すること。
 
 src
   入力ファイル名、または"-"で標準入力
