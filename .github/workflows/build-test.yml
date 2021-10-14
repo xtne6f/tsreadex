@@ -1,0 +1,26 @@
+on: push
+permissions:
+  contents: read
+jobs:
+  build-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: make
+      - name: Test
+        run: |
+          printf "\x47\0\x30\x10" >src.m2t
+          for i in `seq 23`; do printf UUUUUUUU >>src.m2t; done
+          printf "\x47\0\x30\x11" >>src.m2t
+          for i in `seq 23`; do printf UUUUUUUU >>src.m2t; done
+          printf "\x47\x12\x34\x10" >>src.m2t
+          for i in `seq 23`; do printf UUUUUUUU >>src.m2t; done
+          printf "\x47\0\x30\x12" >>src.m2t
+          for i in `seq 23`; do printf UUUUUUUU >>src.m2t; done
+          test "2376616443 376" = "`./tsreadex -s -752 -x 4660 src.m2t | cksum | head -c 14`"

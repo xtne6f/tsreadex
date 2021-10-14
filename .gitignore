@@ -8,5 +8,6 @@
 !*.txt
 !*.vcxproj
 !*.vcxproj.filters
+!.github/workflows/*.yml
 !.gitignore
 !Makefile
