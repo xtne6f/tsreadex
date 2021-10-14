@@ -4,7 +4,9 @@
 #include <windows.h>
 #include <io.h>
 #else
-#define _LARGEFILE64_SOURCE
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
 #include <errno.h>
 #include <sys/select.h>
 #include <sys/stat.h>
@@ -97,7 +99,7 @@ const char *GetSmallString(const char *s)
 
 int64_t SeekFile(int file, int64_t offset)
 {
-    return lseek64(file, offset < 0 ? offset + 1 : offset, offset < 0 ? SEEK_END : SEEK_SET);
+    return lseek(file, offset < 0 ? offset + 1 : offset, offset < 0 ? SEEK_END : SEEK_SET);
 }
 
 template<class P>
