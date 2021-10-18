@@ -153,13 +153,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="id3conv.cpp" />
-    <ClCompile Include="servfilt.cpp" />
+    <ClCompile Include="servicefilter.cpp" />
     <ClCompile Include="tsreadex.cpp" />
     <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="id3conv.hpp" />
-    <ClInclude Include="servfilt.hpp" />
+    <ClInclude Include="servicefilter.hpp" />
     <ClInclude Include="util.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

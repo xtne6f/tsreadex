@@ -1,4 +1,4 @@
-#include "servfilt.hpp"
+#include "servicefilter.hpp"
 #include <algorithm>
 
 CServiceFilter::CServiceFilter()

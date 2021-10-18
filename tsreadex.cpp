@@ -22,7 +22,7 @@
 #include <chrono>
 #include <unordered_set>
 #include "id3conv.hpp"
-#include "servfilt.hpp"
+#include "servicefilter.hpp"
 #include "util.hpp"
 
 namespace
@@ -142,7 +142,7 @@ int main(int argc, char **argv)
     int timeoutSec = 0;
     int timeoutMode = 0;
     std::unordered_set<int> excludePidSet;
-    CServiceFilter servfilt;
+    CServiceFilter servicefilter;
     CID3Converter id3conv;
 #ifdef _WIN32
     const wchar_t *srcName = L"";
@@ -198,24 +198,24 @@ int main(int argc, char **argv)
             else if (c == 'n') {
                 int n = static_cast<int>(strtol(GetSmallString(argv[++i]), nullptr, 10));
                 invalid = !(-256 <= n && n <= 65535);
-                servfilt.SetProgramNumberOrIndex(n);
+                servicefilter.SetProgramNumberOrIndex(n);
             }
             else if (c == 'a' || c == 'b' || c == 'c' || c == 'u') {
                 int mode = static_cast<int>(strtol(GetSmallString(argv[++i]), nullptr, 10));
                 if (c == 'a') {
                     invalid = !(0 <= mode && mode <= 1);
-                    servfilt.SetAudio1Mode(mode);
+                    servicefilter.SetAudio1Mode(mode);
                 }
                 else {
                     invalid = !(0 <= mode && mode <= 2);
                     if (c == 'b') {
-                        servfilt.SetAudio2Mode(mode);
+                        servicefilter.SetAudio2Mode(mode);
                     }
                     else if (c == 'c') {
-                        servfilt.SetCaptionMode(mode);
+                        servicefilter.SetCaptionMode(mode);
                     }
                     else {
-                        servfilt.SetSuperimposeMode(mode);
+                        servicefilter.SetSuperimposeMode(mode);
                     }
                 }
             }
@@ -405,13 +405,13 @@ int main(int argc, char **argv)
             }
             for (int i = bufPos; i + 188 <= bufCount; i += unitSize) {
                 if (excludePidSet.count(extract_ts_header_pid(buf + i)) == 0) {
-                    servfilt.AddPacket(buf + i);
+                    servicefilter.AddPacket(buf + i);
                 }
             }
-            for (auto it = servfilt.GetPackets().cbegin(); it != servfilt.GetPackets().end(); it += 188) {
+            for (auto it = servicefilter.GetPackets().cbegin(); it != servicefilter.GetPackets().end(); it += 188) {
                 id3conv.AddPacket(&*it);
             }
-            servfilt.ClearPackets();
+            servicefilter.ClearPackets();
             if (!id3conv.GetPackets().empty()) {
                 if (fwrite(id3conv.GetPackets().data(), 1, id3conv.GetPackets().size(), stdout) != id3conv.GetPackets().size()) {
                     completed = true;

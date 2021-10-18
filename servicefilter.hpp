@@ -1,5 +1,5 @@
-#ifndef INCLUDE_SERVFILT_HPP
-#define INCLUDE_SERVFILT_HPP
+#ifndef INCLUDE_SERVICEFILTER_HPP
+#define INCLUDE_SERVICEFILTER_HPP
 
 #include "util.hpp"
 #include <stdint.h>

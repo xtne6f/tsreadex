@@ -21,7 +21,7 @@
     <ClCompile Include="util.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="servfilt.cpp">
+    <ClCompile Include="servicefilter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="id3conv.cpp">
@@ -32,7 +32,7 @@
     <ClInclude Include="util.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="servfilt.hpp">
+    <ClInclude Include="servicefilter.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="id3conv.hpp">
