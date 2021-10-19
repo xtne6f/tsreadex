@@ -89,6 +89,9 @@ src
 
 ライセンスはMITとする。
 
-"-n"オプションはおもにffmpegが動的な副音声追加などを扱えないのをなんとかするためのもの。こんな機能は不要になるのが理想。
+"-n"オプションはおもにffmpegが動的な副音声追加などを扱えないのをなんとかするためのもの。ffmpegなどの改善により不要になる
+のが理想だと思う。
+
+"-n"オプションはtsukumi( https://github.com/tsukumijima )氏のSlack上でのアイデアをもとに設計した。
 
 "-d"オプションの実装にあたり https://github.com/monyone/node-arib-subtitle-timedmetadater を参考にした。
