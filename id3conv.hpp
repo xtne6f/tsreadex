@@ -23,6 +23,8 @@ private:
     bool m_enabled;
     bool m_treatUnknownPrivateDataAsSuperimpose;
     bool m_insertInappropriate5BytesIntoPesPayload;
+    bool m_forceMonotonousPts;
+    int64_t m_lastID3Pts;
     std::vector<uint8_t> m_packets;
     PAT m_pat;
     int m_firstPmtPid;

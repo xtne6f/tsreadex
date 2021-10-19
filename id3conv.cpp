@@ -5,6 +5,8 @@ CID3Converter::CID3Converter()
     : m_enabled(false)
     , m_treatUnknownPrivateDataAsSuperimpose(false)
     , m_insertInappropriate5BytesIntoPesPayload(false)
+    , m_forceMonotonousPts(false)
+    , m_lastID3Pts(-1)
     , m_firstPmtPid(0)
     , m_captionPid(0)
     , m_superimposePid(0)
@@ -24,6 +26,7 @@ void CID3Converter::SetOption(int flags)
     m_enabled = !!(flags & 1);
     m_treatUnknownPrivateDataAsSuperimpose = !!(flags & 2);
     m_insertInappropriate5BytesIntoPesPayload = !!(flags & 4);
+    m_forceMonotonousPts = !!(flags & 8);
 }
 
 void CID3Converter::AddPacket(const uint8_t *packet)
@@ -242,30 +245,31 @@ void CID3Converter::CheckPrivateDataPes(const std::vector<uint8_t> &pes)
 {
     const uint8_t PRIVATE_STREAM_1 = 0xbd;
     const uint8_t PRIVATE_STREAM_2 = 0xbf;
+    const int ACCEPTABLE_PTS_DIFF_SEC = 10;
 
     size_t payloadPos = 0;
-    uint8_t pts[5] = {};
+    int64_t pts = -1;
     if (pes[0] == 0 && pes[1] == 0 && pes[2] == 1) {
         int streamID = pes[3];
         if (streamID == PRIVATE_STREAM_1 && pes.size() >= 9) {
             int ptsDtsFlags = pes[7] >> 6;
             payloadPos = 9 + pes[8];
             if (ptsDtsFlags >= 2 && pes.size() >= 14) {
-                std::copy(pes.begin() + 9, pes.begin() + 14, pts);
+                pts = (pes[13] >> 1) |
+                      (pes[12] << 7) |
+                      ((pes[11] & 0xfe) << 14) |
+                      (pes[10] << 22) |
+                      (static_cast<int64_t>(pes[9] & 0x0e) << 29);
             }
         }
         else if (streamID == PRIVATE_STREAM_2) {
             payloadPos = 6;
             if (m_pcr >= 0) {
-                pts[0] = static_cast<uint8_t>(m_pcr >> 29) | 0x21; // 3 bits
-                pts[1] = static_cast<uint8_t>(m_pcr >> 22); // 8 bits
-                pts[2] = static_cast<uint8_t>(m_pcr >> 14) | 1; // 7 bits
-                pts[3] = static_cast<uint8_t>(m_pcr >> 7); // 8 bits
-                pts[4] = static_cast<uint8_t>(m_pcr << 1) | 1; // 7 bits
+                pts = m_pcr;
             }
         }
     }
-    if (payloadPos == 0 || payloadPos + 1 >= pes.size() || pts[0] == 0) {
+    if (payloadPos == 0 || payloadPos + 1 >= pes.size() || pts < 0) {
         return;
     }
     int dataIdentifier = pes[payloadPos];
@@ -274,6 +278,14 @@ void CID3Converter::CheckPrivateDataPes(const std::vector<uint8_t> &pes)
         privateStreamID != 0xff) {
         // Not an ARIB Synchronized/Asynchronous PES data
         return;
+    }
+    if (m_forceMonotonousPts) {
+        if (m_lastID3Pts >= 0 &&
+            ((0x200000000 + m_lastID3Pts - pts) & 0x1ffffffff) < 90000 * ACCEPTABLE_PTS_DIFF_SEC) {
+            // Prevent PTS goes back
+            pts = m_lastID3Pts;
+        }
+        m_lastID3Pts = pts;
     }
 
     // ID3 Timed Metadata
@@ -286,7 +298,11 @@ void CID3Converter::CheckPrivateDataPes(const std::vector<uint8_t> &pes)
     m_buf.push_back(0x80);
     m_buf.push_back(0x80);
     m_buf.push_back(5);
-    m_buf.insert(m_buf.end(), pts, pts + 5);
+    m_buf.push_back(static_cast<uint8_t>(pts >> 29) | 0x21); // 3 bits
+    m_buf.push_back(static_cast<uint8_t>(pts >> 22)); // 8 bits
+    m_buf.push_back(static_cast<uint8_t>(pts >> 14) | 1); // 7 bits
+    m_buf.push_back(static_cast<uint8_t>(pts >> 7)); // 8 bits
+    m_buf.push_back(static_cast<uint8_t>(pts << 1) | 1); // 7 bits
     if (m_insertInappropriate5BytesIntoPesPayload) {
         m_buf.insert(m_buf.end(), 5, 0);
     }
