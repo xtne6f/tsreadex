@@ -233,7 +233,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
     }
     const uint8_t *table = psi.data;
     int programNumber = (table[3] << 8) | table[4];
-    m_pcrPid = ((table[8] & 0x03) << 8) | table[9];
+    m_pcrPid = ((table[8] & 0x1f) << 8) | table[9];
     if (m_pcrPid == 0x1fff) {
         m_pcr = -1;
     }
