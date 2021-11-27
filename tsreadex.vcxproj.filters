@@ -27,6 +27,12 @@
     <ClCompile Include="id3conv.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="huffman.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="aac.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util.hpp">
@@ -36,6 +42,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="id3conv.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="huffman.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="aac.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

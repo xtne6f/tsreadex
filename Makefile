@@ -9,7 +9,7 @@ else
 endif
 
 all: $(TARGET)
-$(TARGET): tsreadex.cpp util.cpp util.hpp id3conv.cpp id3conv.hpp servicefilter.hpp servicefilter.cpp
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH) -o $@ tsreadex.cpp util.cpp id3conv.cpp servicefilter.cpp
+$(TARGET): tsreadex.cpp util.cpp util.hpp id3conv.cpp id3conv.hpp servicefilter.cpp servicefilter.hpp aac.cpp aac.hpp huffman.cpp huffman.hpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH) -o $@ tsreadex.cpp util.cpp id3conv.cpp servicefilter.cpp aac.cpp huffman.cpp
 clean:
 	$(RM) $(TARGET)

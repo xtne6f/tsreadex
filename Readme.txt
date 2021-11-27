@@ -48,13 +48,16 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   - PCR(Program Clock Reference): PID=0x01ff (ただし上記ストリームに重畳されている場合はそのPID)
   このフィルタが有効でないとき"-a"、"-b"、"-c"、"-u"オプションは無視される。
 
--a aud1, range=0 or 1, default=0
+-a aud1, range=0 or 1 [+4] [+8], default=0
   第1音声をそのままか、補完するか。
   1のとき、ストリームが存在しなければPMTの項目を補って無音のAACストリームを挿入する。
+  +4のとき、モノラルであればステレオにする。
+  +8のとき、デュアルモノ(ARIB STD-B32)を2つのモノラル音声に分離し、右音声を第2音声として扱う。
 
--b aud2, range=0 or 1 or 2, default=0
+-b aud2, range=0 or 1 or 2 [+4], default=0
   第2音声をそのままか、補完するか、削除するか。
   1のとき、ストリームが存在しなければPMTの項目を補って無音のAACストリームを挿入する。
+  +4のとき、モノラルであればステレオにする。
 
 -c cap, range=0 or 1 or 2, default=0
   ARIB字幕をそのままか、補完するか、削除するか。
@@ -98,3 +101,6 @@ src
 "-n"オプションはtsukumi( https://github.com/tsukumijima )氏のSlack上でのアイデアをもとに設計した。
 
 "-d"オプションの実装にあたり https://github.com/monyone/node-arib-subtitle-timedmetadater を参考にした。
+
+デュアルモノ分離などの実装にあたり https://github.com/monyone/node-aac-dualmono-splitter を参考にした。
+デュアルモノ分離、ステレオ化は典型的な形式(AAC-LC,48/44.1kHz)のみ対応。ほかの形式に対しては原則、無変換になる(はず)。

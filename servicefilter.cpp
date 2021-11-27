@@ -1,10 +1,14 @@
 #include "servicefilter.hpp"
+#include "aac.hpp"
 #include <algorithm>
 
 CServiceFilter::CServiceFilter()
     : m_programNumberOrIndex(0)
     , m_audio1Mode(0)
     , m_audio2Mode(0)
+    , m_audio1MuxToStereo(false)
+    , m_audio2MuxToStereo(false)
+    , m_audio1MuxDualMono(false)
     , m_captionMode(0)
     , m_superimposeMode(0)
     , m_videoPid(0)
@@ -18,8 +22,7 @@ CServiceFilter::CServiceFilter()
     , m_pmtCounter(0)
     , m_audio1PesCounter(0)
     , m_audio2PesCounter(0)
-    , m_audio1PesCounterBase(-2)
-    , m_audio2PesCounterBase(-2)
+    , m_isAudio1DualMono(false)
     , m_audio1Pts(-1)
     , m_audio2Pts(-1)
     , m_audio1PtsPcrDiff(0)
@@ -28,6 +31,19 @@ CServiceFilter::CServiceFilter()
     static const PAT zeroPat = {};
     m_pat = zeroPat;
     m_pmtPsi = zeroPat.psi;
+}
+
+void CServiceFilter::SetAudio1Mode(int mode)
+{
+    m_audio1Mode = mode % 4;
+    m_audio1MuxToStereo = !!(mode & 4);
+    m_audio1MuxDualMono = !!(mode & 8);
+}
+
+void CServiceFilter::SetAudio2Mode(int mode)
+{
+    m_audio2Mode = mode % 4;
+    m_audio2MuxToStereo = !!(mode & 4);
 }
 
 void CServiceFilter::AddPacket(const uint8_t *packet)
@@ -92,14 +108,12 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                                 (packet[7] << 17) |
                                 (static_cast<int64_t>(packet[6]) << 25);
                         if (m_audio1Mode == 1 && m_audio1Pid == 0) {
-                            m_audio1PesCounterBase = -1;
                             AddAudioPesPackets(0, (m_pcr + m_audio1PtsPcrDiff) & 0x1ffffffff, m_audio1Pts, m_audio1PesCounter);
                         }
-                        if (m_audio2Mode == 1 && m_audio2Pid == 0) {
+                        if (m_audio2Mode == 1 && m_audio2Pid == 0 && !m_isAudio1DualMono) {
                             if (m_audio2PtsPcrDiff < 0) {
                                 m_audio2PtsPcrDiff = m_audio1PtsPcrDiff;
                             }
-                            m_audio2PesCounterBase = -1;
                             AddAudioPesPackets(1, (m_pcr + m_audio2PtsPcrDiff) & 0x1ffffffff, m_audio2Pts, m_audio2PesCounter);
                         }
                     }
@@ -109,28 +123,49 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                 ChangePidAndAddPacket(packet, 0x0100);
             }
             else if (pid == m_audio1Pid) {
-                int64_t pts = GetAudioPresentationTimeStamp(unitStart, payload, payloadSize);
-                if (pts >= 0 && m_pcr >= 0) {
-                    m_audio1PtsPcrDiff = 0x200000000 + pts - m_pcr;
+                if (AccumulatePesPackets(m_audio1UnitPackets, packet, unitStart)) {
+                    m_isAudio1DualMono = m_audio1MuxDualMono && TransmuxDualMono(m_audio1UnitPackets);
+                    if (m_isAudio1DualMono || (m_audio1MuxToStereo &&
+                            TransmuxMonoToStereo(m_audio1UnitPackets, m_audio1MuxWorkspace, 0x0110, m_audio1PesCounter, m_audio1PtsPcrDiff))) {
+                        // Already added
+                        m_audio1UnitPackets.clear();
+                    }
+                    // Add packets
+                    for (size_t i = 0; i + 188 <= m_audio1UnitPackets.size(); i += 188) {
+                        const uint8_t *packet_ = m_audio1UnitPackets.data() + i;
+                        int payloadSize_ = get_ts_payload_size(packet_);
+                        const uint8_t *payload_ = packet_ + 188 - payloadSize_;
+                        int64_t pts = GetAudioPresentationTimeStamp(i == 0, payload_, payloadSize_);
+                        if (pts >= 0 && m_pcr >= 0) {
+                            m_audio1PtsPcrDiff = 0x200000000 + pts - m_pcr;
+                        }
+                        m_audio1PesCounter = (m_audio1PesCounter + 1) & 0x0f;
+                        ChangePidAndAddPacket(packet_, 0x0110, m_audio1PesCounter);
+                    }
+                    m_audio1UnitPackets.clear();
                 }
-                if (m_audio1PesCounterBase < 0) {
-                    // Keep counter continuity
-                    m_audio1PesCounterBase = m_audio1PesCounterBase < -1 ? 0 : (0x10 + m_audio1PesCounter + 1 - counter) & 0x0f;
-                }
-                m_audio1PesCounter = (m_audio1PesCounterBase + counter) & 0x0f;
-                ChangePidAndAddPacket(packet, 0x0110, m_audio1PesCounter);
             }
             else if (pid == m_audio2Pid) {
-                int64_t pts = GetAudioPresentationTimeStamp(unitStart, payload, payloadSize);
-                if (pts >= 0 && m_pcr >= 0) {
-                    m_audio2PtsPcrDiff = 0x200000000 + pts - m_pcr;
+                if (AccumulatePesPackets(m_audio2UnitPackets, packet, unitStart)) {
+                    if (m_audio2MuxToStereo &&
+                        TransmuxMonoToStereo(m_audio2UnitPackets, m_audio2MuxWorkspace, 0x0111, m_audio2PesCounter, m_audio2PtsPcrDiff)) {
+                        // Already added
+                        m_audio2UnitPackets.clear();
+                    }
+                    // Add packets
+                    for (size_t i = 0; i + 188 <= m_audio2UnitPackets.size(); i += 188) {
+                        const uint8_t *packet_ = m_audio2UnitPackets.data() + i;
+                        int payloadSize_ = get_ts_payload_size(packet_);
+                        const uint8_t *payload_ = packet_ + 188 - payloadSize_;
+                        int64_t pts = GetAudioPresentationTimeStamp(i == 0, payload_, payloadSize_);
+                        if (pts >= 0 && m_pcr >= 0) {
+                            m_audio2PtsPcrDiff = 0x200000000 + pts - m_pcr;
+                        }
+                        m_audio2PesCounter = (m_audio2PesCounter + 1) & 0x0f;
+                        ChangePidAndAddPacket(packet_, 0x0111, m_audio2PesCounter);
+                    }
+                    m_audio2UnitPackets.clear();
                 }
-                if (m_audio2PesCounterBase < 0) {
-                    // Keep counter continuity
-                    m_audio2PesCounterBase = m_audio2PesCounterBase < -1 ? 0 : (0x10 + m_audio2PesCounter + 1 - counter) & 0x0f;
-                }
-                m_audio2PesCounter = (m_audio2PesCounterBase + counter) & 0x0f;
-                ChangePidAndAddPacket(packet, 0x0111, m_audio2PesCounter);
             }
             else if (pid == m_captionPid) {
                 ChangePidAndAddPacket(packet, 0x0130);
@@ -328,9 +363,15 @@ void CServiceFilter::AddPmt(const PSI &psi)
 
     if (m_audio1Pid != lastAudio1Pid) {
         m_audio1Pts = -1;
+        m_isAudio1DualMono = false;
+        m_audio1UnitPackets.clear();
+        m_audio1MuxWorkspace.clear();
+        m_audio1MuxDualMonoWorkspace.clear();
     }
     if (m_audio2Pid != lastAudio2Pid) {
         m_audio2Pts = -1;
+        m_audio2UnitPackets.clear();
+        m_audio2MuxWorkspace.clear();
     }
 
     if (m_videoPid != 0) {
@@ -345,6 +386,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
             m_buf[10] = 0x00;
         }
     }
+    bool addAudio2 = m_audio2Pid != 0 || m_audio2Mode == 1 || (m_audio2Mode != 2 && m_isAudio1DualMono);
     if (m_audio1Pid != 0 || m_audio1Mode == 1) {
         m_buf.push_back(ADTS_TRANSPORT);
         // PID=0x0110
@@ -352,7 +394,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
         m_buf.push_back(0x10);
         if (m_audio1Pid != 0) {
             int esInfoLength = ((table[m_audio1DescPos + 3] & 0x03) << 8) | table[m_audio1DescPos + 4];
-            if (m_audio1ComponentTagUnknown && (m_audio2Pid != 0 || m_audio2Mode == 1)) {
+            if (m_audio1ComponentTagUnknown && addAudio2) {
                 int esInfoNewLength = esInfoLength + 3;
                 m_buf.push_back(0xf0 | static_cast<uint8_t>(esInfoNewLength >> 8));
                 m_buf.push_back( static_cast<uint8_t>(esInfoNewLength));
@@ -378,7 +420,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
             m_buf.push_back(maybeCProfile ? 0x83 : 0x10);
         }
     }
-    if (m_audio2Pid != 0 || m_audio2Mode == 1) {
+    if (addAudio2) {
         m_buf.push_back(ADTS_TRANSPORT);
         // PID=0x0111
         m_buf.push_back(0xe1);
@@ -591,4 +633,194 @@ int64_t CServiceFilter::GetAudioPresentationTimeStamp(int unitStart, const uint8
         }
     }
     return -1;
+}
+
+bool CServiceFilter::AccumulatePesPackets(std::vector<uint8_t> &unitPackets, const uint8_t *packet, int unitStart)
+{
+    if (unitStart) {
+        unitPackets.assign(packet, packet + 188);
+    }
+    else if (!unitPackets.empty()) {
+        unitPackets.insert(unitPackets.end(), packet, packet + 188);
+    }
+
+    // Check if PES has accumulated
+    int lastCounter = -1;
+    int entireSize = 0;
+    uint8_t head[6];
+    for (size_t i = 0; i + 188 <= unitPackets.size(); i += 188) {
+        const uint8_t *packet_ = unitPackets.data() + i;
+        int counter = extract_ts_header_counter(packet_);
+        if (lastCounter >= 0 && ((lastCounter + 1) & 0x0f) != counter) {
+            unitPackets.clear();
+            return false;
+        }
+        lastCounter = counter;
+
+        int payloadSize = get_ts_payload_size(packet_);
+        const uint8_t *payload = packet_ + 188 - payloadSize;
+        for (int j = 0; j < payloadSize && entireSize + j < 6; ++j) {
+            head[entireSize + j] = payload[j];
+        }
+        entireSize += payloadSize;
+        if (entireSize >= 6) {
+            if (head[0] != 0 || head[1] != 0 || head[2] != 1) {
+                unitPackets.clear();
+                return false;
+            }
+            int pesPacketLength = (head[4] << 8) | head[5];
+            if (entireSize >= 6 + pesPacketLength) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void CServiceFilter::ConcatenatePayload(std::vector<uint8_t> &dest, const std::vector<uint8_t> &unitPackets, bool &pcrFlag, uint8_t (&pcr)[6])
+{
+    dest.clear();
+    pcrFlag = false;
+    for (size_t i = 0; i + 188 <= unitPackets.size(); i += 188) {
+        const uint8_t *packet = unitPackets.data() + i;
+        int adaptation = extract_ts_header_adaptation(packet);
+        if (adaptation & 2) {
+            int adaptationLength = packet[4];
+            if (adaptationLength >= 7 && !!(packet[5] & 0x10)) {
+                pcrFlag = true;
+                std::copy(packet + 6, packet + 12, pcr);
+            }
+        }
+        int payloadSize = get_ts_payload_size(packet);
+        const uint8_t *payload = packet + 188 - payloadSize;
+        dest.insert(dest.end(), payload, payload + payloadSize);
+    }
+}
+
+void CServiceFilter::AddAudioPesPackets(const std::vector<uint8_t> &pes, int pid, uint8_t &counter, int64_t &ptsPcrDiff, const uint8_t *pcr)
+{
+    for (size_t i = 0; i < pes.size(); ) {
+        m_packets.push_back(0x47);
+        m_packets.push_back((i == 0 ? 0x40 : 0) | static_cast<uint8_t>(pid >> 8));
+        m_packets.push_back(static_cast<uint8_t>(pid));
+        counter = (counter + 1) & 0x0f;
+        size_t len = std::min<size_t>(184, pes.size() - i);
+        if (pcr && i + len >= pes.size() && len > 176) {
+            // Reduce payload in order to insert PCR
+            len = 176;
+        }
+        m_packets.push_back((len < 184 ? 0x30 : 0x10) | counter);
+        if (len < 184) {
+            m_packets.push_back(static_cast<uint8_t>(183 - len));
+            if (len < 183) {
+                if (pcr && len <= 176) {
+                    // Insert PCR
+                    m_packets.push_back(0x10);
+                    m_packets.insert(m_packets.end(), pcr, pcr + 6);
+                    m_packets.insert(m_packets.end(), 176 - len, 0xff);
+                    pcr = nullptr;
+                }
+                else {
+                    m_packets.push_back(0x00);
+                    m_packets.insert(m_packets.end(), 182 - len, 0xff);
+                }
+            }
+        }
+        int64_t pts = GetAudioPresentationTimeStamp(i == 0, pes.data() + i, static_cast<int>(len));
+        if (pts >= 0 && m_pcr >= 0) {
+            ptsPcrDiff = 0x200000000 + pts - m_pcr;
+        }
+        m_packets.insert(m_packets.end(), pes.begin() + i, pes.begin() + i + len);
+        i += len;
+    }
+}
+
+bool CServiceFilter::TransmuxMonoToStereo(const std::vector<uint8_t> &unitPackets, std::vector<uint8_t> &workspace,
+                                          int pid, uint8_t &counter, int64_t &ptsPcrDiff)
+{
+    bool pcrFlag;
+    uint8_t pcr[6];
+    ConcatenatePayload(m_buf, unitPackets, pcrFlag, pcr);
+
+    if (m_buf.size() >= 6 && m_buf[0] == 0 && m_buf[1] == 0 && m_buf[2] == 1) {
+        int streamID = m_buf[3];
+        size_t pesPacketLength = (m_buf[4] << 8) | m_buf[5];
+        // audio stream
+        if ((streamID & 0xe0) == 0xc0 && m_buf.size() >= 6 + pesPacketLength && pesPacketLength >= 3) {
+            // PES has been accumulated
+            size_t pesPayloadPos = 9 + m_buf[8];
+            if (pesPayloadPos < 6 + pesPacketLength) {
+                m_buf.resize(6 + pesPacketLength);
+                if (Aac::TransmuxMonoToStereo(m_destLeftBuf, workspace, m_buf.data() + pesPayloadPos, m_buf.size() - pesPayloadPos) &&
+                    !m_destLeftBuf.empty()) {
+
+                    // Stereo
+                    m_buf.resize(pesPayloadPos);
+                    m_buf.insert(m_buf.end(), m_destLeftBuf.begin(), m_destLeftBuf.end());
+
+                    // Set length fields
+                    size_t pesLen = m_buf.size() - 6;
+                    m_buf[4] = static_cast<uint8_t>(pesLen >> 8);
+                    m_buf[5] = static_cast<uint8_t>(pesLen);
+                    AddAudioPesPackets(m_buf, pid, counter, ptsPcrDiff, pcrFlag ? pcr : nullptr);
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool CServiceFilter::TransmuxDualMono(const std::vector<uint8_t> &unitPackets)
+{
+    bool pcrFlag;
+    uint8_t pcr[6];
+    ConcatenatePayload(m_buf, unitPackets, pcrFlag, pcr);
+
+    if (m_buf.size() >= 6 && m_buf[0] == 0 && m_buf[1] == 0 && m_buf[2] == 1) {
+        int streamID = m_buf[3];
+        size_t pesPacketLength = (m_buf[4] << 8) | m_buf[5];
+        // audio stream
+        if ((streamID & 0xe0) == 0xc0 && m_buf.size() >= 6 + pesPacketLength && pesPacketLength >= 3) {
+            // PES has been accumulated
+            size_t pesPayloadPos = 9 + m_buf[8];
+            if (pesPayloadPos < 6 + pesPacketLength) {
+                m_buf.resize(6 + pesPacketLength);
+                if (Aac::TransmuxDualMono(m_destLeftBuf, m_destRightBuf, m_audio1MuxDualMonoWorkspace,
+                                          m_audio1MuxToStereo, m_audio2MuxToStereo,
+                                          m_buf.data() + pesPayloadPos, m_buf.size() - pesPayloadPos) &&
+                    !m_destLeftBuf.empty() &&
+                    !m_destRightBuf.empty()) {
+
+                    // Dual mono left
+                    m_buf.resize(pesPayloadPos);
+                    m_buf.insert(m_buf.end(), m_destLeftBuf.begin(), m_destLeftBuf.end());
+
+                    // Set stream ID
+                    m_buf[3] = 0xc0;
+                    // Set length fields
+                    size_t pesLen = m_buf.size() - 6;
+                    m_buf[4] = static_cast<uint8_t>(pesLen >> 8);
+                    m_buf[5] = static_cast<uint8_t>(pesLen);
+                    AddAudioPesPackets(m_buf, 0x0110, m_audio1PesCounter, m_audio1PtsPcrDiff, pcrFlag ? pcr : nullptr);
+
+                    if (m_audio2Pid == 0 && m_audio2Mode != 2) {
+                        // Dual mono right
+                        m_buf.resize(pesPayloadPos);
+                        m_buf.insert(m_buf.end(), m_destRightBuf.begin(), m_destRightBuf.end());
+
+                        // Set stream ID
+                        m_buf[3] = 0xc1;
+                        // Set length fields
+                        pesLen = m_buf.size() - 6;
+                        m_buf[4] = static_cast<uint8_t>(pesLen >> 8);
+                        m_buf[5] = static_cast<uint8_t>(pesLen);
+                        AddAudioPesPackets(m_buf, 0x0111, m_audio2PesCounter, m_audio2PtsPcrDiff, nullptr);
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }

@@ -10,8 +10,8 @@ class CServiceFilter
 public:
     CServiceFilter();
     void SetProgramNumberOrIndex(int n) { m_programNumberOrIndex = n; }
-    void SetAudio1Mode(int mode) { m_audio1Mode = mode; }
-    void SetAudio2Mode(int mode) { m_audio2Mode = mode; }
+    void SetAudio1Mode(int mode);
+    void SetAudio2Mode(int mode);
     void SetCaptionMode(int mode) { m_captionMode = mode; }
     void SetSuperimposeMode(int mode) { m_superimposeMode = mode; }
     void AddPacket(const uint8_t *packet);
@@ -28,10 +28,19 @@ private:
     void AddAudioPesPackets(uint8_t index, int64_t targetPts, int64_t &pts, uint8_t &counter);
     void Add64MsecAudioPesPacket(uint8_t index, int64_t pts, uint8_t &counter);
     static int64_t GetAudioPresentationTimeStamp(int unitStart, const uint8_t *payload, int payloadSize);
+    static bool AccumulatePesPackets(std::vector<uint8_t> &unitPackets, const uint8_t *packet, int unitStart);
+    static void ConcatenatePayload(std::vector<uint8_t> &dest, const std::vector<uint8_t> &unitPackets, bool &pcrFlag, uint8_t (&pcr)[6]);
+    void AddAudioPesPackets(const std::vector<uint8_t> &pes, int pid, uint8_t &counter, int64_t &ptsPcrDiff, const uint8_t *pcr);
+    bool TransmuxMonoToStereo(const std::vector<uint8_t> &unitPackets, std::vector<uint8_t> &workspace,
+                              int pid, uint8_t &counter, int64_t &ptsPcrDiff);
+    bool TransmuxDualMono(const std::vector<uint8_t> &unitPackets);
 
     int m_programNumberOrIndex;
     int m_audio1Mode;
     int m_audio2Mode;
+    bool m_audio1MuxToStereo;
+    bool m_audio2MuxToStereo;
+    bool m_audio1MuxDualMono;
     int m_captionMode;
     int m_superimposeMode;
     std::vector<uint8_t> m_packets;
@@ -48,13 +57,19 @@ private:
     uint8_t m_pmtCounter;
     uint8_t m_audio1PesCounter;
     uint8_t m_audio2PesCounter;
-    int m_audio1PesCounterBase;
-    int m_audio2PesCounterBase;
+    bool m_isAudio1DualMono;
+    std::vector<uint8_t> m_audio1UnitPackets;
+    std::vector<uint8_t> m_audio2UnitPackets;
+    std::vector<uint8_t> m_audio1MuxWorkspace;
+    std::vector<uint8_t> m_audio2MuxWorkspace;
+    std::vector<uint8_t> m_audio1MuxDualMonoWorkspace;
     int64_t m_audio1Pts;
     int64_t m_audio2Pts;
     int64_t m_audio1PtsPcrDiff;
     int64_t m_audio2PtsPcrDiff;
     std::vector<uint8_t> m_buf;
+    std::vector<uint8_t> m_destLeftBuf;
+    std::vector<uint8_t> m_destRightBuf;
     std::vector<uint8_t> m_lastPat;
     std::vector<uint8_t> m_lastPmt;
 };

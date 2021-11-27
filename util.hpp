@@ -40,4 +40,23 @@ inline int extract_ts_header_pid(const uint8_t *packet) { return ((packet[1] & 0
 inline int extract_ts_header_adaptation(const uint8_t *packet) { return (packet[3] >> 4) & 0x03; }
 inline int extract_ts_header_counter(const uint8_t *packet) { return packet[3] & 0x0f; }
 
+inline uint8_t extract_bit(const uint8_t *data, size_t pos)
+{
+    return (data[pos >> 3] >> (7 - (pos & 7))) & 1;
+}
+
+inline bool read_bool(const uint8_t *data, size_t &pos)
+{
+    return !!extract_bit(data, pos++);
+}
+
+inline int read_bits(const uint8_t *data, size_t &pos, int n)
+{
+    int r = 0;
+    while (--n >= 0) {
+        r |= extract_bit(data, pos++) << n;
+    }
+    return r;
+}
+
 #endif

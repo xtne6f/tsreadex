@@ -203,15 +203,16 @@ int main(int argc, char **argv)
             else if (c == 'a' || c == 'b' || c == 'c' || c == 'u') {
                 int mode = static_cast<int>(strtol(GetSmallString(argv[++i]), nullptr, 10));
                 if (c == 'a') {
-                    invalid = !(0 <= mode && mode <= 1);
+                    invalid = !(0 <= mode && mode <= 13 && mode % 4 <= 1);
                     servicefilter.SetAudio1Mode(mode);
+                }
+                else if (c == 'b') {
+                    invalid = !(0 <= mode && mode <= 6 && mode % 4 <= 2);
+                    servicefilter.SetAudio2Mode(mode);
                 }
                 else {
                     invalid = !(0 <= mode && mode <= 2);
-                    if (c == 'b') {
-                        servicefilter.SetAudio2Mode(mode);
-                    }
-                    else if (c == 'c') {
+                    if (c == 'c') {
                         servicefilter.SetCaptionMode(mode);
                     }
                     else {

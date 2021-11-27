@@ -152,12 +152,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="aac.cpp" />
+    <ClCompile Include="huffman.cpp" />
     <ClCompile Include="id3conv.cpp" />
     <ClCompile Include="servicefilter.cpp" />
     <ClCompile Include="tsreadex.cpp" />
     <ClCompile Include="util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="aac.hpp" />
+    <ClInclude Include="huffman.hpp" />
     <ClInclude Include="id3conv.hpp" />
     <ClInclude Include="servicefilter.hpp" />
     <ClInclude Include="util.hpp" />
