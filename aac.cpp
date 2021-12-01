@@ -579,44 +579,30 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
                     dest.push_back((ID_CPE << 5) | static_cast<uint8_t>(read_bits(aac, scePos, 4) << 1));
 
                     // Left individual_channel_stream
-                    size_t icsPos = scePos;
-                    while (icsPos + 7 < sceEndPos) {
-                        dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, 8)));
+                    size_t leftPos = scePos;
+                    while (leftPos + 7 < sceEndPos) {
+                        dest.push_back(static_cast<uint8_t>(read_bits(aac, leftPos, 8)));
                     }
-                    int icsRemain = static_cast<int>(sceEndPos - icsPos);
-                    if (icsRemain != 0) {
-                        dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, icsRemain)) << (8 - icsRemain));
+                    int leftRemain = static_cast<int>(sceEndPos - leftPos);
+                    if (leftRemain != 0) {
+                        dest.push_back(static_cast<uint8_t>(read_bits(aac, leftPos, leftRemain)) << (8 - leftRemain));
                     }
                     // Right individual_channel_stream
-                    icsPos = scePos;
-                    if (icsRemain != 0) {
-                        dest.back() |= static_cast<uint8_t>(read_bits(aac, icsPos, 8 - icsRemain));
-                    }
-                    while (icsPos + 7 < sceEndPos) {
-                        dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, 8)));
-                    }
-                    icsRemain = static_cast<int>(sceEndPos - icsPos);
-                    if (icsRemain != 0) {
-                        dest.push_back((static_cast<uint8_t>(read_bits(aac, icsPos, icsRemain)) << (8 - icsRemain)) | (0xff >> icsRemain));
-                    }
-                    if (icsRemain == 0 || icsRemain >= 6) {
-                        // ID_END
-                        dest.push_back(0xff);
+                    if (leftRemain != 0) {
+                        dest.back() |= static_cast<uint8_t>(read_bits(aac, scePos, 8 - leftRemain));
                     }
                 }
-                else {
-                    // SCE
-                    while (scePos + 7 < sceEndPos) {
-                        dest.push_back(static_cast<uint8_t>(read_bits(aac, scePos, 8)));
-                    }
-                    int sceRemain = static_cast<int>(sceEndPos - scePos);
-                    if (sceRemain != 0) {
-                        dest.push_back((static_cast<uint8_t>(read_bits(aac, scePos, sceRemain)) << (8 - sceRemain)) | (0xff >> sceRemain));
-                    }
-                    if (sceRemain == 0 || sceRemain >= 6) {
-                        // ID_END
-                        dest.push_back(0xff);
-                    }
+                // SCE or Right individual_channel_stream
+                while (scePos + 7 < sceEndPos) {
+                    dest.push_back(static_cast<uint8_t>(read_bits(aac, scePos, 8)));
+                }
+                int sceRemain = static_cast<int>(sceEndPos - scePos);
+                if (sceRemain != 0) {
+                    dest.push_back((static_cast<uint8_t>(read_bits(aac, scePos, sceRemain)) << (8 - sceRemain)) | (0xe0 >> sceRemain));
+                }
+                if (sceRemain == 0 || sceRemain >= 6) {
+                    // ID_END, remaining bits are filled with 0.
+                    dest.push_back((0x60e0 >> sceRemain) & 0xe0);
                 }
             }
 
@@ -747,35 +733,36 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
         for (int i = 0; i <= blocksInFrame; ++i) {
             size_t scePos = sceBegin[i];
             size_t sceEndPos = sceEnd[i];
-            // CPE
-            scePos += 3;
-            // Copy element_instance_tag, common_window = 0
-            dest.push_back((ID_CPE << 5) | static_cast<uint8_t>(read_bits(aac, scePos, 4) << 1));
+            {
+                // CPE
+                scePos += 3;
+                // Copy element_instance_tag, common_window = 0
+                dest.push_back((ID_CPE << 5) | static_cast<uint8_t>(read_bits(aac, scePos, 4) << 1));
 
-            // Left individual_channel_stream
-            size_t icsPos = scePos;
-            while (icsPos + 7 < sceEndPos) {
-                dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, 8)));
+                // Left individual_channel_stream
+                size_t leftPos = scePos;
+                while (leftPos + 7 < sceEndPos) {
+                    dest.push_back(static_cast<uint8_t>(read_bits(aac, leftPos, 8)));
+                }
+                int leftRemain = static_cast<int>(sceEndPos - leftPos);
+                if (leftRemain != 0) {
+                    dest.push_back(static_cast<uint8_t>(read_bits(aac, leftPos, leftRemain)) << (8 - leftRemain));
+                }
+                // Right individual_channel_stream
+                if (leftRemain != 0) {
+                    dest.back() |= static_cast<uint8_t>(read_bits(aac, scePos, 8 - leftRemain));
+                }
             }
-            int icsRemain = static_cast<int>(sceEndPos - icsPos);
-            if (icsRemain != 0) {
-                dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, icsRemain)) << (8 - icsRemain));
+            while (scePos + 7 < sceEndPos) {
+                dest.push_back(static_cast<uint8_t>(read_bits(aac, scePos, 8)));
             }
-            // Right individual_channel_stream
-            icsPos = scePos;
-            if (icsRemain != 0) {
-                dest.back() |= static_cast<uint8_t>(read_bits(aac, icsPos, 8 - icsRemain));
+            int sceRemain = static_cast<int>(sceEndPos - scePos);
+            if (sceRemain != 0) {
+                dest.push_back((static_cast<uint8_t>(read_bits(aac, scePos, sceRemain)) << (8 - sceRemain)) | (0xe0 >> sceRemain));
             }
-            while (icsPos + 7 < sceEndPos) {
-                dest.push_back(static_cast<uint8_t>(read_bits(aac, icsPos, 8)));
-            }
-            icsRemain = static_cast<int>(sceEndPos - icsPos);
-            if (icsRemain != 0) {
-                dest.push_back((static_cast<uint8_t>(read_bits(aac, icsPos, icsRemain)) << (8 - icsRemain)) | (0xff >> icsRemain));
-            }
-            if (icsRemain == 0 || icsRemain >= 6) {
-                // ID_END
-                dest.push_back(0xff);
+            if (sceRemain == 0 || sceRemain >= 6) {
+                // ID_END, remaining bits are filled with 0.
+                dest.push_back((0x60e0 >> sceRemain) & 0xe0);
             }
         }
 
