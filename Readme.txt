@@ -103,4 +103,4 @@ src
 "-d"オプションの実装にあたり https://github.com/monyone/node-arib-subtitle-timedmetadater を参考にした。
 
 デュアルモノ分離などの実装にあたり https://github.com/monyone/node-aac-dualmono-splitter を参考にした。
-デュアルモノ分離、ステレオ化は典型的な形式(AAC-LC,48/44.1kHz)のみ対応。ほかの形式に対しては原則、無変換になる(はず)。
+デュアルモノ分離、ステレオ化は典型的な形式(AAC-LC,48/44.1/32kHz)のみ対応。ほかの形式に対しては原則、無変換になる(はず)。

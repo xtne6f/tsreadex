@@ -19,6 +19,14 @@ const uint16_t SWB_OFFSET_LONG_WINDOW_48KHZ[64] =
     1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
 };
 
+const uint16_t SWB_OFFSET_LONG_WINDOW_32KHZ[64] =
+{
+    0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 80, 88, 96, 108, 120, 132, 144, 160, 176, 196, 216,
+    240, 264, 292, 320, 352, 384, 416, 448, 480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800, 832, 864, 896, 928, 960, 992, 1024,
+    // padding
+    1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024,
+};
+
 const uint16_t SWB_OFFSET_SHORT_WINDOW_48KHZ[16] =
 {
     0, 4, 8, 12, 16, 20, 28, 36, 44, 56, 68, 80, 96, 112, 128,
@@ -57,7 +65,7 @@ void ByteAlignment(size_t &pos)
     pos = (pos + 7) / 8 * 8;
 }
 
-bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
+bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos, bool is32khz)
 {
     pos += 4;
 
@@ -112,8 +120,11 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
     }
     else {
         numWindows = 1;
-        for (int i = 0; i < maxSfb + 1; ++i) {
-            sectSfbOffset[0][i] = SWB_OFFSET_LONG_WINDOW_48KHZ[i];
+        if (is32khz) {
+            std::copy(SWB_OFFSET_LONG_WINDOW_32KHZ, SWB_OFFSET_LONG_WINDOW_32KHZ + maxSfb + 1, sectSfbOffset[0]);
+        }
+        else {
+            std::copy(SWB_OFFSET_LONG_WINDOW_48KHZ, SWB_OFFSET_LONG_WINDOW_48KHZ + maxSfb + 1, sectSfbOffset[0]);
         }
     }
 
@@ -361,14 +372,14 @@ bool FillElement(const uint8_t *aac, size_t &pos)
     return true;
 }
 
-int RawDataBlock(const uint8_t *aac, size_t lenBytes, size_t &pos)
+int RawDataBlock(const uint8_t *aac, size_t lenBytes, size_t &pos, bool is32khz)
 {
     if (!CheckOverrun(lenBytes, pos)) {
         return -1;
     }
     int id = read_bits(aac, pos, 3);
     if (id == ID_SCE) {
-        if (SingleChannelElement(aac, lenBytes, pos)) {
+        if (SingleChannelElement(aac, lenBytes, pos, is32khz)) {
             return id;
         }
     }
@@ -487,8 +498,8 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
         bool protectionAbsent = read_bool(aac, pos);
         pos += 2;
         int samplingFrequencyIndex = read_bits(aac, pos, 4);
-        // Frequencies other than 48kHz or 44.1kHz are not supported.
-        if (samplingFrequencyIndex != 3 && samplingFrequencyIndex != 4) {
+        // Frequencies other than 48/44.1/32kHz are not supported.
+        if (samplingFrequencyIndex < 3 || samplingFrequencyIndex > 5) {
             SkipPayload(workspace, workspaceLenBytes);
             return false;
         }
@@ -522,7 +533,7 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
             int sceCount = 0;
             for (;;) {
                 size_t beginPos = pos;
-                int id = RawDataBlock(aac, frameLenBytes, pos);
+                int id = RawDataBlock(aac, frameLenBytes, pos, samplingFrequencyIndex == 5);
                 if (id < 0) {
                     SkipPayload(workspace, workspaceLenBytes);
                     return false;
@@ -653,8 +664,8 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
         bool protectionAbsent = read_bool(aac, pos);
         pos += 2;
         int samplingFrequencyIndex = read_bits(aac, pos, 4);
-        // Frequencies other than 48kHz or 44.1kHz are not supported.
-        if (samplingFrequencyIndex != 3 && samplingFrequencyIndex != 4) {
+        // Frequencies other than 48/44.1/32kHz are not supported.
+        if (samplingFrequencyIndex < 3 || samplingFrequencyIndex > 5) {
             SkipPayload(workspace, workspaceLenBytes);
             return false;
         }
@@ -687,7 +698,7 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
             bool sceFound = false;
             for (;;) {
                 size_t beginPos = pos;
-                int id = RawDataBlock(aac, frameLenBytes, pos);
+                int id = RawDataBlock(aac, frameLenBytes, pos, samplingFrequencyIndex == 5);
                 if (id < 0) {
                     SkipPayload(workspace, workspaceLenBytes);
                     return false;
