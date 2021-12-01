@@ -120,7 +120,6 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
     // section_data
     int numSec[8];
     int sectCb[8][64];
-    int sectStart[8][64];
     int sectEnd[8][64];
     int sfbCb[8][64];
     for (int g = 0; g < numWindowGroups; ++g) {
@@ -139,7 +138,7 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
                 }
                 int sectLenIncr = read_bits(aac, pos, sectLenIncrBits);
                 sectLen += sectLenIncr;
-                if (k + sectLen > maxSfb + 1) {
+                if (k + sectLen > maxSfb) {
                     assert(false);
                     return false;
                 }
@@ -147,12 +146,11 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
                     break;
                 }
             }
-            sectStart[g][i] = k;
-            sectEnd[g][i] = k + sectLen;
             for (int sfb = k; sfb < k + sectLen; ++sfb) {
                 sfbCb[g][sfb] = sectCb[g][i];
             }
             k += sectLen;
+            sectEnd[g][i] = k;
         }
         numSec[g] = i;
     }
@@ -246,17 +244,21 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
     }
     // spectral_data
     for (int g = 0; g < numWindowGroups; ++g) {
+        int sectStart = 0;
         for (int i = 0; i < numSec[g]; ++i) {
-            if (sectCb[g][i] == ZERO_HCB || sectCb[g][i] > ESC_HCB) {
+            int codebook = sectCb[g][i];
+            if (codebook == ZERO_HCB || codebook > ESC_HCB) {
+                sectStart = sectEnd[g][i];
                 continue;
             }
-            for (int k = sectSfbOffset[g][sectStart[g][i]]; k < sectSfbOffset[g][sectEnd[g][i]]; ) {
+            int coefEnd = sectSfbOffset[g][sectEnd[g][i]];
+            for (int k = sectSfbOffset[g][sectStart]; k < coefEnd; ) {
                 if (!CheckOverrun(lenBytes, pos)) {
                     return false;
                 }
-                if (sectCb[g][i] < FIRST_PAIR_HCB) {
+                if (codebook < FIRST_PAIR_HCB) {
                     int unsigned_, w, x, y, z;
-                    Huffman::DecodeSpectrumQuadBits(sectCb[g][i] - 1, aac, pos, unsigned_, w, x, y, z);
+                    Huffman::DecodeSpectrumQuadBits(codebook - 1, aac, pos, unsigned_, w, x, y, z);
                     if (unsigned_) {
                         if (w) ++pos;
                         if (x) ++pos;
@@ -267,13 +269,13 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
                 }
                 else {
                     int unsigned_, y, z;
-                    Huffman::DecodeSpectrumPairBits(sectCb[g][i] - 1, aac, pos, unsigned_, y, z);
+                    Huffman::DecodeSpectrumPairBits(codebook - 1, aac, pos, unsigned_, y, z);
                     if (unsigned_) {
                         if (y) ++pos;
                         if (z) ++pos;
                     }
                     k += 2;
-                    if (sectCb[g][i] == ESC_HCB) {
+                    if (codebook == ESC_HCB) {
                         if (y == ESC_FLAG) {
                             int count = 0;
                             while (read_bool(aac, pos)) {
@@ -297,6 +299,7 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
                     }
                 }
             }
+            sectStart = sectEnd[g][i];
         }
     }
     return true;
@@ -506,16 +509,16 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
             break;
         }
         pos += 11;
-        int frames = read_bits(aac, pos, 2);
+        int blocksInFrame = read_bits(aac, pos, 2);
 
         if (!protectionAbsent) {
             // adts(_header)_error_check
-            pos += (frames + 1) * 16;
+            pos += (blocksInFrame + 1) * 16;
         }
 
-        size_t sceBegin[5][2];
-        size_t sceEnd[5][2];
-        for (int i = 0; i <= frames; ++i) {
+        size_t sceBegin[4][2];
+        size_t sceEnd[4][2];
+        for (int i = 0; i <= blocksInFrame; ++i) {
             int sceCount = 0;
             for (;;) {
                 size_t beginPos = pos;
@@ -541,7 +544,7 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
                 return false;
             }
             ByteAlignment(pos);
-            if (frames != 0 && !protectionAbsent) {
+            if (blocksInFrame != 0 && !protectionAbsent) {
                 // adts_raw_data_block_error_check
                 pos += 16;
             }
@@ -566,7 +569,7 @@ bool TransmuxDualMono(std::vector<uint8_t> &destLeft, std::vector<uint8_t> &dest
             // channel_configuration = 2 or 1
             dest[destHeadBytes + 3] |= muxToStereo ? 0x80 : 0x40;
 
-            for (int i = 0; i <= frames; ++i) {
+            for (int i = 0; i <= blocksInFrame; ++i) {
                 size_t scePos = sceBegin[i][destIndex];
                 size_t sceEndPos = sceEnd[i][destIndex];
                 if (muxToStereo) {
@@ -685,16 +688,16 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
             break;
         }
         pos += 11;
-        int frames = read_bits(aac, pos, 2);
+        int blocksInFrame = read_bits(aac, pos, 2);
 
         if (!protectionAbsent) {
             // adts(_header)_error_check
-            pos += (frames + 1) * 16;
+            pos += (blocksInFrame + 1) * 16;
         }
 
-        size_t sceBegin[5];
-        size_t sceEnd[5];
-        for (int i = 0; i <= frames; ++i) {
+        size_t sceBegin[4];
+        size_t sceEnd[4];
+        for (int i = 0; i <= blocksInFrame; ++i) {
             bool sceFound = false;
             for (;;) {
                 size_t beginPos = pos;
@@ -721,7 +724,7 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
                 return false;
             }
             ByteAlignment(pos);
-            if (frames != 0 && !protectionAbsent) {
+            if (blocksInFrame != 0 && !protectionAbsent) {
                 // adts_raw_data_block_error_check
                 pos += 16;
             }
@@ -741,7 +744,7 @@ bool TransmuxMonoToStereo(std::vector<uint8_t> &dest, std::vector<uint8_t> &work
         // channel_configuration = 2
         dest[destHeadBytes + 3] = (dest[destHeadBytes + 3] & 0x3f) | 0x80;
 
-        for (int i = 0; i <= frames; ++i) {
+        for (int i = 0; i <= blocksInFrame; ++i) {
             size_t scePos = sceBegin[i];
             size_t sceEndPos = sceEnd[i];
             // CPE

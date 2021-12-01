@@ -640,7 +640,8 @@ bool CServiceFilter::AccumulatePesPackets(std::vector<uint8_t> &unitPackets, con
     if (unitStart) {
         unitPackets.assign(packet, packet + 188);
     }
-    else if (!unitPackets.empty()) {
+    // Cancel accumulations that are not possible for a regular (with a valid length field) PES
+    else if (!unitPackets.empty() && unitPackets.size() < 0x20000) {
         unitPackets.insert(unitPackets.end(), packet, packet + 188);
     }
 
