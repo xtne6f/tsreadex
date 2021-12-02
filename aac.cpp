@@ -48,6 +48,7 @@ const int EXT_SBR_DATA_CRC = 14;
 
 const int ID_SCE = 0;
 const int ID_CPE = 1;
+const int ID_DSE = 4;
 const int ID_PCE = 5;
 const int ID_FIL = 6;
 const int ID_END = 7;
@@ -316,6 +317,20 @@ bool SingleChannelElement(const uint8_t *aac, size_t lenBytes, size_t &pos, bool
     return true;
 }
 
+void DataStreamElement(const uint8_t *aac, size_t &pos)
+{
+    pos += 4;
+    bool dataByteAlignFlag = read_bool(aac, pos);
+    int cnt = read_bits(aac, pos, 8);
+    if (cnt == 255) {
+        cnt += read_bits(aac, pos, 8);
+    }
+    if (dataByteAlignFlag) {
+        ByteAlignment(pos);
+    }
+    pos += 8 * cnt;
+}
+
 bool ProgramConfigElement(const uint8_t *aac, size_t lenBytes, size_t &pos)
 {
     pos += 10;
@@ -382,6 +397,10 @@ int RawDataBlock(const uint8_t *aac, size_t lenBytes, size_t &pos, bool is32khz)
         if (SingleChannelElement(aac, lenBytes, pos, is32khz)) {
             return id;
         }
+    }
+    else if (id == ID_DSE) {
+        DataStreamElement(aac, pos);
+        return id;
     }
     else if (id == ID_PCE) {
         if (ProgramConfigElement(aac, lenBytes, pos)) {
