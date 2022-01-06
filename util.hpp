@@ -29,6 +29,7 @@ struct PAT
     PSI psi;
 };
 
+uint16_t calc_crc16_ccitt(const uint8_t *data, int data_size, uint16_t crc = 0);
 uint32_t calc_crc32(const uint8_t *data, int data_size, uint32_t crc = 0xffffffff);
 int extract_psi(PSI *psi, const uint8_t *payload, int payload_size, int unit_start, int counter);
 void extract_pat(PAT *pat, const uint8_t *payload, int payload_size, int unit_start, int counter);

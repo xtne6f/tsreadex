@@ -20,9 +20,11 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <chrono>
+#include <memory>
 #include <unordered_set>
 #include "id3conv.hpp"
 #include "servicefilter.hpp"
+#include "traceb24.hpp"
 #include "util.hpp"
 
 namespace
@@ -142,12 +144,16 @@ int main(int argc, char **argv)
     int timeoutSec = 0;
     int timeoutMode = 0;
     std::unordered_set<int> excludePidSet;
+    std::unique_ptr<FILE, decltype(&fclose)> traceFile(nullptr, fclose);
     CServiceFilter servicefilter;
+    CTraceB24Caption traceb24;
     CID3Converter id3conv;
 #ifdef _WIN32
     const wchar_t *srcName = L"";
+    const wchar_t *traceName = L"";
 #else
     const char *srcName = "";
+    const char *traceName = "";
 #endif
 
     for (int i = 1; i < argc; ++i) {
@@ -157,7 +163,7 @@ int main(int argc, char **argv)
             c = ss[1];
         }
         if (c == 'h') {
-            fprintf(stderr, "Usage: tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_num_or_index][-a aud1][-b aud2][-c cap][-u sup][-d flags] src\n");
+            fprintf(stderr, "Usage: tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_num_or_index][-a aud1][-b aud2][-c cap][-u sup][-r trace][-d flags] src\n");
             return 2;
         }
         bool invalid = false;
@@ -220,6 +226,9 @@ int main(int argc, char **argv)
                     }
                 }
             }
+            else if (c == 'r') {
+                traceName = argv[++i];
+            }
             else if (c == 'd') {
                 id3conv.SetOption(static_cast<int>(strtol(GetSmallString(argv[++i]), nullptr, 10)));
             }
@@ -248,7 +257,8 @@ int main(int argc, char **argv)
     }
 
 #ifdef _WIN32
-    if (_setmode(_fileno(stdout), _O_BINARY) < 0) {
+    bool traceToStdout = traceName[0] == L'-' && !traceName[1];
+    if (!traceToStdout && _setmode(_fileno(stdout), _O_BINARY) < 0) {
         fprintf(stderr, "Error: _setmode.\n");
         return 1;
     }
@@ -278,7 +288,14 @@ int main(int argc, char **argv)
         CloseFile(openedFile, asyncContext);
         return 1;
     }
+    if (!traceToStdout && traceName[0]) {
+        traceFile.reset(_wfopen(traceName, L"w"));
+        if (!traceFile) {
+            fprintf(stderr, "Warning: cannot open tracefile.\n");
+        }
+    }
 #else
+    bool traceToStdout = traceName[0] == '-' && !traceName[1];
     bool asyncContext = timeoutMode == 2;
     int file;
     int openedFile = -1;
@@ -298,7 +315,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: cannot open file.\n");
         return 1;
     }
+    if (!traceToStdout && traceName[0]) {
+        traceFile.reset(fopen(traceName, "w"));
+        if (!traceFile) {
+            fprintf(stderr, "Warning: cannot open tracefile.\n");
+        }
+    }
 #endif
+    traceb24.SetFile(traceToStdout ? stdout : traceFile.get());
 
     int64_t filePos = 0;
     if (seekOffset != 0) {
@@ -410,12 +434,15 @@ int main(int argc, char **argv)
                 }
             }
             for (auto it = servicefilter.GetPackets().cbegin(); it != servicefilter.GetPackets().end(); it += 188) {
+                traceb24.AddPacket(&*it);
                 id3conv.AddPacket(&*it);
             }
             servicefilter.ClearPackets();
             if (!id3conv.GetPackets().empty()) {
-                if (fwrite(id3conv.GetPackets().data(), 1, id3conv.GetPackets().size(), stdout) != id3conv.GetPackets().size()) {
-                    completed = true;
+                if (!traceToStdout) {
+                    if (fwrite(id3conv.GetPackets().data(), 1, id3conv.GetPackets().size(), stdout) != id3conv.GetPackets().size()) {
+                        completed = true;
+                    }
                 }
                 id3conv.ClearPackets();
                 lastWriteTime = std::chrono::steady_clock::now();

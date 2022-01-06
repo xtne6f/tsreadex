@@ -2,7 +2,7 @@
 
 使用法:
 
-tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_num_or_index][-a aud1][-b aud2][-c cap][-u sup][-d flags] src
+tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_num_or_index][-a aud1][-b aud2][-c cap][-u sup][-r trace][-d flags] src
 
 -z ignored
   必ず無視されるパラメータ(プロセス識別用など)。
@@ -66,6 +66,29 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
 -u sup, range=0 or 1 or 2, default=0
   ARIB文字スーパーをそのままか、補完するか、削除するか。
   1のとき、ストリームが存在しなければPMTの項目を補う。
+
+-r trace, default=""
+  ストリームについての情報をUTF-8文字列で出力するファイル名、または"-"で標準出力。
+  "-"のとき本来の出力(TSパケット)は抑制される。
+  今のところ以下のような情報を出力する。
+  - 初めて現れたPCRのタイムスタンプ
+    pcrpid=0x{4桁PID};pcr={10桁タイムスタンプ}
+  - エスケープしたARIB字幕のデータとそのPTS
+    pts={10桁タイムスタンプ};pcrrel=[+-]{7桁PCRとの差};b24caption[0-8]={改行までデータ}
+    # [0-8]はそれぞれ字幕管理と字幕文第1～8言語
+    # 字幕データはARIB STD-B24のデータグループ(data_group)構造を原則 %{2桁HEX} でエスケープして表現したもの
+    # ただし、data_group_sizeおよびCRC_16フィールドは取り除かれる
+    # 制御文字をのぞくUTF-8として表現可能な部分はエスケープしないことがある
+    # C1制御文字 U+0080～U+009F はキャレット記法 %^@～%^_ によりエスケープすることがある
+    # %={ および %=} の括弧の対応は、%=} までのバイト数を %={ の位置にビッグエンディアン24bitとして置き換えたものと等価
+    # 字幕本文はARIB STD-B24のUCSの規定に沿ってできるだけUTF-8に変換される
+  - エスケープしたARIB文字スーパーのデータ
+    pts={10桁タイムスタンプ};pcrrel=+0000000;b24superimpose[0-8]={改行までデータ}
+    # PTSにはPCRタイムスタンプが使われる
+    # ほかARIB字幕と同様
+  - エスケープ処理に失敗したとき
+    pts={10桁タイムスタンプ};pcrrel=[+-]{7桁PCRとの差};b24captionerr={改行まで失敗理由}
+    pts={10桁タイムスタンプ};pcrrel=+0000000;b24superimposeerr={改行まで失敗理由}
 
 -d flags, range=0 or 1 [+2] [+4] [+8], default=0
   ARIB字幕/文字スーパーを https://github.com/monyone/aribb24.js が解釈できるID3 timed-metadataに変換する。

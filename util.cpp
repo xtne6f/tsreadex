@@ -1,6 +1,18 @@
 #include "util.hpp"
 #include <algorithm>
 
+uint16_t calc_crc16_ccitt(const uint8_t *data, int data_size, uint16_t crc)
+{
+    for (int i = 0; i < data_size; ++i) {
+        uint16_t c = ((crc >> 8) ^ data[i]) << 8;
+        for (int j = 0; j < 8; ++j) {
+            c = (c << 1) ^ (c & 0x8000 ? 0x1021 : 0);
+        }
+        crc = (crc << 8) ^ c;
+    }
+    return crc;
+}
+
 uint32_t calc_crc32(const uint8_t *data, int data_size, uint32_t crc)
 {
     for (int i = 0; i < data_size; ++i) {

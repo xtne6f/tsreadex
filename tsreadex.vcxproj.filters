@@ -33,6 +33,9 @@
     <ClCompile Include="aac.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="traceb24.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util.hpp">
@@ -48,6 +51,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="aac.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="traceb24.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
