@@ -197,11 +197,16 @@ void CTraceB24Caption::OutputPrivateDataPes(const std::vector<uint8_t> &pes,
         // Not an ARIB Synchronized/Asynchronous PES data
         return;
     }
+
     PARSE_PRIVATE_DATA_RESULT ret = ParsePrivateData(m_buf, pes.data() + payloadPos, pes.size() - payloadPos, drcsList, langTags);
     if (ret != PARSE_PRIVATE_DATA_FAILED_NEED_MANAGEMENT) {
+        int64_t ptsPcrDiff = (0x200000000 + pts - m_pcr) & 0x1ffffffff;
+        if (ptsPcrDiff >= 0x100000000) {
+            ptsPcrDiff -= 0x200000000;
+        }
         fprintf(m_fp, "pts=%010lld;pcrrel=%+08d;b24%s",
                 static_cast<long long>(pts),
-                static_cast<int>(m_pcr < 0 ? -9999999 : std::min<int64_t>(std::max<int64_t>(pts - m_pcr, -9999999), 9999999)),
+                static_cast<int>(m_pcr < 0 ? -9999999 : std::min<int64_t>(std::max<int64_t>(ptsPcrDiff, -9999999), 9999999)),
                 dataIdentifier == 0x81 ? "superimpose" : "caption");
         if (ret == PARSE_PRIVATE_DATA_SUCCEEDED) {
             m_buf.push_back('\n');
@@ -700,7 +705,8 @@ CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *dat
                     AddEscapedChar(buf, data[pos++]);
                 }
             }
-            AddEscapedChar(buf, data[pos++]);
+            // tcs 0->1
+            AddEscapedChar(buf, data[pos++] | (lang == LANG_TAG_ARIB8 || lang == LANG_TAG_ARIB8_LATIN ? 0x04 : 0));
         }
     }
     else {
