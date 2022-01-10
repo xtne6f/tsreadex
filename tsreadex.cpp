@@ -337,12 +337,15 @@ int main(int argc, char **argv)
     static uint8_t buf[65536];
     int bufCount = 0;
     int unitSize = 0;
+    size_t bufSize = sizeof(buf) / 8;
+    int measurementReadCount = 0;
     auto lastWriteTime = std::chrono::steady_clock::now();
+    auto lastMeasurementTime = lastWriteTime;
     auto limitReadTime = lastWriteTime + std::chrono::seconds(1);
     int64_t limitReadFilePos = filePos;
     for (;;) {
         // If timeoutMode == 1, read between "next to the syncword (buf[0])" and syncword.
-        size_t bufMax = unitSize == 0 ? sizeof(buf) : sizeof(buf) / unitSize * unitSize - (timeoutMode == 1 ? unitSize - 1 : 0);
+        size_t bufMax = unitSize == 0 ? bufSize : bufSize / unitSize * unitSize - (timeoutMode == 1 ? unitSize - 1 : 0);
         int n = ReadFileToBuffer(file, buf + bufCount, bufMax - bufCount, asyncContext, [=]() {
                     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - lastWriteTime).count() >= timeoutSec; });
         bool retry = false;
@@ -438,6 +441,19 @@ int main(int argc, char **argv)
                 id3conv.AddPacket(&*it);
             }
             servicefilter.ClearPackets();
+
+            auto nowTime = std::chrono::steady_clock::now();
+            if (++measurementReadCount >= 500) {
+                // Maximize buffer size
+                bufSize = sizeof(buf);
+            }
+            if (std::chrono::duration_cast<std::chrono::seconds>(nowTime - lastMeasurementTime).count() >= 1) {
+                // Decrease/Increase buffer size
+                bufSize = measurementReadCount < 10 ? std::max(bufSize - sizeof(buf) / 8, sizeof(buf) / 8) :
+                                                      std::min(bufSize + sizeof(buf) / 8, sizeof(buf));
+                measurementReadCount = 0;
+                lastMeasurementTime = nowTime;
+            }
             if (!id3conv.GetPackets().empty()) {
                 if (!traceToStdout) {
                     if (fwrite(id3conv.GetPackets().data(), 1, id3conv.GetPackets().size(), stdout) != id3conv.GetPackets().size()) {
@@ -448,7 +464,7 @@ int main(int argc, char **argv)
                 lastWriteTime = std::chrono::steady_clock::now();
             }
             else if (timeoutSec != 0 &&
-                     std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - lastWriteTime).count() >= timeoutSec) {
+                     std::chrono::duration_cast<std::chrono::seconds>(nowTime - lastWriteTime).count() >= timeoutSec) {
                 completed = true;
             }
             if (completed) {
