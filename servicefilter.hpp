@@ -19,6 +19,13 @@ public:
     void ClearPackets() { m_packets.clear(); }
 
 private:
+    const uint8_t H_262_VIDEO = 0x02;
+    const uint8_t MPEG2_AUDIO = 0x04;
+    const uint8_t PES_PRIVATE_DATA = 0x06;
+    const uint8_t ADTS_TRANSPORT = 0x0f;
+    const uint8_t AVC_VIDEO = 0x1b;
+    const uint8_t H_265_VIDEO = 0x24;
+
     static std::vector<PMT_REF>::const_iterator FindNitRef(const std::vector<PMT_REF> &pmt);
     std::vector<PMT_REF>::const_iterator FindTargetPmtRef(const std::vector<PMT_REF> &pmt) const;
     void AddPat(int transportStreamID, int programNumber, bool addNit);
@@ -49,6 +56,8 @@ private:
     int m_videoPid;
     int m_audio1Pid;
     int m_audio2Pid;
+    uint8_t m_audio1StreamType;
+    uint8_t m_audio2StreamType;
     int m_captionPid;
     int m_superimposePid;
     int m_pcrPid;

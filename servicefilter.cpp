@@ -14,6 +14,8 @@ CServiceFilter::CServiceFilter()
     , m_videoPid(0)
     , m_audio1Pid(0)
     , m_audio2Pid(0)
+    , m_audio1StreamType(0)
+    , m_audio2StreamType(0)
     , m_captionPid(0)
     , m_superimposePid(0)
     , m_pcrPid(0)
@@ -124,8 +126,8 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
             }
             else if (pid == m_audio1Pid) {
                 if (AccumulatePesPackets(m_audio1UnitPackets, packet, unitStart)) {
-                    m_isAudio1DualMono = m_audio1MuxDualMono && TransmuxDualMono(m_audio1UnitPackets);
-                    if (m_isAudio1DualMono || (m_audio1MuxToStereo &&
+                    m_isAudio1DualMono = m_audio1MuxDualMono && m_audio1StreamType == ADTS_TRANSPORT && TransmuxDualMono(m_audio1UnitPackets);
+                    if (m_isAudio1DualMono || (m_audio1MuxToStereo && m_audio1StreamType == ADTS_TRANSPORT &&
                             TransmuxMonoToStereo(m_audio1UnitPackets, m_audio1MuxWorkspace, 0x0110, m_audio1PesCounter, m_audio1PtsPcrDiff))) {
                         // Already added
                         m_audio1UnitPackets.clear();
@@ -147,7 +149,7 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
             }
             else if (pid == m_audio2Pid) {
                 if (AccumulatePesPackets(m_audio2UnitPackets, packet, unitStart)) {
-                    if (m_audio2MuxToStereo &&
+                    if (m_audio2MuxToStereo && m_audio2StreamType == ADTS_TRANSPORT &&
                         TransmuxMonoToStereo(m_audio2UnitPackets, m_audio2MuxWorkspace, 0x0111, m_audio2PesCounter, m_audio2PtsPcrDiff)) {
                         // Already added
                         m_audio2UnitPackets.clear();
@@ -257,12 +259,6 @@ void CServiceFilter::AddPat(int transportStreamID, int programNumber, bool addNi
 
 void CServiceFilter::AddPmt(const PSI &psi)
 {
-    const uint8_t H_262_VIDEO = 0x02;
-    const uint8_t PES_PRIVATE_DATA = 0x06;
-    const uint8_t ADTS_TRANSPORT = 0x0f;
-    const uint8_t AVC_VIDEO = 0x1b;
-    const uint8_t H_265_VIDEO = 0x24;
-
     if (psi.section_length < 9) {
         return;
     }
@@ -299,17 +295,19 @@ void CServiceFilter::AddPmt(const PSI &psi)
     m_audio2Pid = 0;
     m_captionPid = 0;
     m_superimposePid = 0;
-    int m_videoDescPos = 0;
-    int m_audio1DescPos = 0;
-    int m_audio2DescPos = 0;
-    int m_captionDescPos = 0;
-    int m_superimposeDescPos = 0;
+    m_audio1StreamType = ADTS_TRANSPORT;
+    m_audio2StreamType = ADTS_TRANSPORT;
+    int videoDescPos = 0;
+    int audio1DescPos = 0;
+    int audio2DescPos = 0;
+    int captionDescPos = 0;
+    int superimposeDescPos = 0;
     bool maybeCProfile = false;
-    bool m_audio1ComponentTagUnknown = true;
+    bool audio1ComponentTagUnknown = true;
 
     int tableLen = 3 + psi.section_length - 4/*CRC32*/;
     while (pos + 4 < tableLen) {
-        int streamType = table[pos];
+        uint8_t streamType = table[pos];
         int esPid = ((table[pos + 1] & 0x1f) << 8) | table[pos + 2];
         int esInfoLength = ((table[pos + 3] & 0x03) << 8) | table[pos + 4];
         if (pos + 5 + esInfoLength <= tableLen) {
@@ -326,20 +324,37 @@ void CServiceFilter::AddPmt(const PSI &psi)
                 streamType == H_265_VIDEO) {
                 if ((m_videoPid == 0 && componentTag == 0xff) || componentTag == 0x00 || componentTag == 0x81) {
                     m_videoPid = esPid;
-                    m_videoDescPos = pos;
+                    videoDescPos = pos;
                     maybeCProfile = componentTag == 0x81;
                 }
             }
             else if (streamType == ADTS_TRANSPORT) {
                 if ((m_audio1Pid == 0 && componentTag == 0xff) || componentTag == 0x10 || componentTag == 0x83 || componentTag == 0x85) {
                     m_audio1Pid = esPid;
-                    m_audio1DescPos = pos;
-                    m_audio1ComponentTagUnknown = componentTag == 0xff;
+                    m_audio1StreamType = streamType;
+                    audio1DescPos = pos;
+                    audio1ComponentTagUnknown = componentTag == 0xff;
                 }
                 else if (componentTag == 0x11) {
                     if (m_audio2Mode != 2) {
                         m_audio2Pid = esPid;
-                        m_audio2DescPos = pos;
+                        m_audio2StreamType = streamType;
+                        audio2DescPos = pos;
+                    }
+                }
+            }
+            else if (streamType == MPEG2_AUDIO) {
+                if (m_audio1Pid == 0) {
+                    m_audio1Pid = esPid;
+                    m_audio1StreamType = streamType;
+                    audio1DescPos = pos;
+                    audio1ComponentTagUnknown = false;
+                }
+                else if (m_audio2Pid == 0) {
+                    if (m_audio2Mode != 2) {
+                        m_audio2Pid = esPid;
+                        m_audio2StreamType = streamType;
+                        audio2DescPos = pos;
                     }
                 }
             }
@@ -347,13 +362,13 @@ void CServiceFilter::AddPmt(const PSI &psi)
                 if (componentTag == 0x30 || componentTag == 0x87) {
                     if (m_captionMode != 2) {
                         m_captionPid = esPid;
-                        m_captionDescPos = pos;
+                        captionDescPos = pos;
                     }
                 }
                 else if (componentTag == 0x38 || componentTag == 0x88) {
                     if (m_superimposeMode != 2) {
                         m_superimposePid = esPid;
-                        m_superimposeDescPos = pos;
+                        superimposeDescPos = pos;
                     }
                 }
             }
@@ -375,12 +390,12 @@ void CServiceFilter::AddPmt(const PSI &psi)
     }
 
     if (m_videoPid != 0) {
-        m_buf.push_back(table[m_videoDescPos]);
+        m_buf.push_back(table[videoDescPos]);
         // PID=0x0100
         m_buf.push_back(0xe1);
         m_buf.push_back(0x00);
-        int esInfoLength = ((table[m_videoDescPos + 3] & 0x03) << 8) | table[m_videoDescPos + 4];
-        m_buf.insert(m_buf.end(), table + m_videoDescPos + 3, table + m_videoDescPos + 5 + esInfoLength);
+        int esInfoLength = ((table[videoDescPos + 3] & 0x03) << 8) | table[videoDescPos + 4];
+        m_buf.insert(m_buf.end(), table + videoDescPos + 3, table + videoDescPos + 5 + esInfoLength);
         if (m_pcrPid == m_videoPid) {
             m_buf[9] = 0xe1;
             m_buf[10] = 0x00;
@@ -388,25 +403,25 @@ void CServiceFilter::AddPmt(const PSI &psi)
     }
     bool addAudio2 = m_audio2Pid != 0 || m_audio2Mode == 1 || (m_audio2Mode != 2 && m_isAudio1DualMono);
     if (m_audio1Pid != 0 || m_audio1Mode == 1) {
-        m_buf.push_back(ADTS_TRANSPORT);
+        m_buf.push_back(m_audio1StreamType);
         // PID=0x0110
         m_buf.push_back(0xe1);
         m_buf.push_back(0x10);
         if (m_audio1Pid != 0) {
-            int esInfoLength = ((table[m_audio1DescPos + 3] & 0x03) << 8) | table[m_audio1DescPos + 4];
-            if (m_audio1ComponentTagUnknown && addAudio2) {
+            int esInfoLength = ((table[audio1DescPos + 3] & 0x03) << 8) | table[audio1DescPos + 4];
+            if (audio1ComponentTagUnknown && addAudio2) {
                 int esInfoNewLength = esInfoLength + 3;
                 m_buf.push_back(0xf0 | static_cast<uint8_t>(esInfoNewLength >> 8));
-                m_buf.push_back( static_cast<uint8_t>(esInfoNewLength));
+                m_buf.push_back(static_cast<uint8_t>(esInfoNewLength));
                 m_buf.push_back(0x52);
                 m_buf.push_back(1);
                 m_buf.push_back(maybeCProfile ? 0x83 : 0x10);
             }
             else {
                 m_buf.push_back(0xf0 | static_cast<uint8_t>(esInfoLength >> 8));
-                m_buf.push_back( static_cast<uint8_t>(esInfoLength));
+                m_buf.push_back(static_cast<uint8_t>(esInfoLength));
             }
-            m_buf.insert(m_buf.end(), table + m_audio1DescPos + 5, table + m_audio1DescPos + 5 + esInfoLength);
+            m_buf.insert(m_buf.end(), table + audio1DescPos + 5, table + audio1DescPos + 5 + esInfoLength);
             if (m_pcrPid == m_audio1Pid) {
                 m_buf[9] = 0xe1;
                 m_buf[10] = 0x10;
@@ -421,13 +436,13 @@ void CServiceFilter::AddPmt(const PSI &psi)
         }
     }
     if (addAudio2) {
-        m_buf.push_back(ADTS_TRANSPORT);
+        m_buf.push_back(m_audio2StreamType);
         // PID=0x0111
         m_buf.push_back(0xe1);
         m_buf.push_back(0x11);
         if (m_audio2Pid != 0) {
-            int esInfoLength = ((table[m_audio2DescPos + 3] & 0x03) << 8) | table[m_audio2DescPos + 4];
-            m_buf.insert(m_buf.end(), table + m_audio2DescPos + 3, table + m_audio2DescPos + 5 + esInfoLength);
+            int esInfoLength = ((table[audio2DescPos + 3] & 0x03) << 8) | table[audio2DescPos + 4];
+            m_buf.insert(m_buf.end(), table + audio2DescPos + 3, table + audio2DescPos + 5 + esInfoLength);
             if (m_pcrPid == m_audio2Pid) {
                 m_buf[9] = 0xe1;
                 m_buf[10] = 0x11;
@@ -447,8 +462,8 @@ void CServiceFilter::AddPmt(const PSI &psi)
         m_buf.push_back(0xe1);
         m_buf.push_back(0x30);
         if (m_captionPid != 0) {
-            int esInfoLength = ((table[m_captionDescPos + 3] & 0x03) << 8) | table[m_captionDescPos + 4];
-            m_buf.insert(m_buf.end(), table + m_captionDescPos + 3, table + m_captionDescPos + 5 + esInfoLength);
+            int esInfoLength = ((table[captionDescPos + 3] & 0x03) << 8) | table[captionDescPos + 4];
+            m_buf.insert(m_buf.end(), table + captionDescPos + 3, table + captionDescPos + 5 + esInfoLength);
             if (m_pcrPid == m_captionPid) {
                 m_buf[9] = 0xe1;
                 m_buf[10] = 0x30;
@@ -476,8 +491,8 @@ void CServiceFilter::AddPmt(const PSI &psi)
         m_buf.push_back(0xe1);
         m_buf.push_back(0x38);
         if (m_superimposePid != 0) {
-            int esInfoLength = ((table[m_superimposeDescPos + 3] & 0x03) << 8) | table[m_superimposeDescPos + 4];
-            m_buf.insert(m_buf.end(), table + m_superimposeDescPos + 3, table + m_superimposeDescPos + 5 + esInfoLength);
+            int esInfoLength = ((table[superimposeDescPos + 3] & 0x03) << 8) | table[superimposeDescPos + 4];
+            m_buf.insert(m_buf.end(), table + superimposeDescPos + 3, table + superimposeDescPos + 5 + esInfoLength);
             if (m_pcrPid == m_superimposePid) {
                 m_buf[9] = 0xe1;
                 m_buf[10] = 0x38;
