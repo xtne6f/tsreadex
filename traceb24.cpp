@@ -601,6 +601,18 @@ size_t AddEscapedData(std::vector<uint8_t> &buf, const uint8_t *data, size_t dat
     return dataSize;
 }
 
+size_t AddBase64EncodedData(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize)
+{
+    static const char code[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+    for (size_t i = 0; i < dataSize; i += 3) {
+        buf.push_back(code[data[i] >> 2]);
+        buf.push_back(code[((data[i] & 0x3) << 4) | (i + 1 < dataSize ? data[i + 1] >> 4 : 0)]);
+        buf.push_back(code[i + 1 < dataSize ? ((data[i + 1] & 0xf) << 2) | (i + 2 < dataSize ? data[i + 2] >> 6 : 0) : 64]);
+        buf.push_back(code[i + 2 < dataSize ? data[i + 2] & 0x3f : 64]);
+    }
+    return dataSize;
+}
+
 void AddUcs(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize)
 {
     if (dataSize > 0 && (data[0] == 0xfe || data[0] == 0xff)) {
@@ -629,6 +641,8 @@ CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *dat
 {
     const uint8_t BEGIN_UNIT_BRACE[] = {'%', '=', '{'};
     const uint8_t END_UNIT_BRACE[] = {'%', '=', '}'};
+    const uint8_t BEGIN_BASE64_BRACE[] = {'%', '+', '{'};
+    const uint8_t END_BASE64_BRACE[] = {'%', '+', '}'};
 
     if (dataSize < 3) {
         return PARSE_PRIVATE_DATA_FAILED;
@@ -788,21 +802,31 @@ CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *dat
                     for (int j = 0; j < numberOfFont && pos < drcsDataEnd; ++j) {
                         int mode = data[pos] & 0x0f;
                         AddEscapedChar(buf, data[pos++]);
-                        size_t n = drcsDataEnd - pos;
+                        size_t drcsHead = drcsDataEnd - pos;
+                        size_t drcsBody = 0;
                         if (mode <= 1) {
-                            if (n >= 3) {
+                            if (drcsHead >= 3) {
                                 uint8_t depth = data[pos];
-                                n = 3 + ((depth == 0 ? 1 : depth <= 2 ? 2 : depth <= 6 ? 3 :
-                                          depth <= 14 ? 4 : depth <= 30 ? 5 : depth <= 62 ? 6 :
-                                          depth <= 126 ? 7 : depth <= 254 ? 8 : 9) * data[pos + 1] * data[pos + 2] + 7) / 8;
+                                drcsBody = ((depth == 0 ? 1 : depth <= 2 ? 2 : depth <= 6 ? 3 :
+                                             depth <= 14 ? 4 : depth <= 30 ? 5 : depth <= 62 ? 6 :
+                                             depth <= 126 ? 7 : depth <= 254 ? 8 : 9) * data[pos + 1] * data[pos + 2] + 7) / 8;
+                                drcsBody = std::min(drcsBody, drcsHead - 3);
+                                drcsHead = 3;
                             }
                         }
                         else {
-                            if (n >= 4) {
-                                n = 4 + ((data[pos + 2] << 8) | data[pos + 3]);
+                            if (drcsHead >= 4) {
+                                drcsBody = (data[pos + 2] << 8) | data[pos + 3];
+                                drcsBody = std::min(drcsBody, drcsHead - 4);
+                                drcsHead = 4;
                             }
                         }
-                        pos += AddEscapedData(buf, data + pos, std::min(n, drcsDataEnd - pos));
+                        pos += AddEscapedData(buf, data + pos, drcsHead);
+                        if (drcsBody > 0) {
+                            buf.insert(buf.end(), BEGIN_BASE64_BRACE, BEGIN_BASE64_BRACE + sizeof(BEGIN_BASE64_BRACE));
+                            pos += AddBase64EncodedData(buf, data + pos, drcsBody);
+                            buf.insert(buf.end(), END_BASE64_BRACE, END_BASE64_BRACE + sizeof(END_BASE64_BRACE));
+                        }
                     }
                 }
             }
