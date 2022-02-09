@@ -129,6 +129,9 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                     m_isAudio1DualMono = m_audio1MuxDualMono && m_audio1StreamType == ADTS_TRANSPORT && TransmuxDualMono(m_audio1UnitPackets);
                     if (m_isAudio1DualMono || (m_audio1MuxToStereo && m_audio1StreamType == ADTS_TRANSPORT &&
                             TransmuxMonoToStereo(m_audio1UnitPackets, m_audio1MuxWorkspace, 0x0110, m_audio1PesCounter, m_audio1PtsPcrDiff))) {
+                        if (m_audio2Mode == 3 && m_audio2Pid == 0) {
+                            TransmuxMonoToStereo(m_audio1UnitPackets, m_audio1MuxWorkspace, 0x0111, m_audio1PesCounter, m_audio1PtsPcrDiff);
+                        }
                         // Already added
                         m_audio1UnitPackets.clear();
                     }
@@ -143,6 +146,9 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                         }
                         m_audio1PesCounter = (m_audio1PesCounter + 1) & 0x0f;
                         ChangePidAndAddPacket(packet_, 0x0110, m_audio1PesCounter);
+                        if (m_audio2Mode == 3 && m_audio2Pid == 0) {
+                            ChangePidAndAddPacket(packet_, 0x0111, m_audio1PesCounter);
+                        }
                     }
                     m_audio1UnitPackets.clear();
                 }
@@ -401,7 +407,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
             m_buf[10] = 0x00;
         }
     }
-    bool addAudio2 = m_audio2Pid != 0 || m_audio2Mode == 1 || (m_audio2Mode != 2 && m_isAudio1DualMono);
+    bool addAudio2 = m_audio2Pid != 0 || m_audio2Mode == 1 || m_audio2Mode == 3 || (m_audio2Mode != 2 && m_isAudio1DualMono);
     if (m_audio1Pid != 0 || m_audio1Mode == 1) {
         m_buf.push_back(m_audio1StreamType);
         // PID=0x0110

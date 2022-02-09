@@ -213,7 +213,7 @@ int main(int argc, char **argv)
                     servicefilter.SetAudio1Mode(mode);
                 }
                 else if (c == 'b') {
-                    invalid = !(0 <= mode && mode <= 6 && mode % 4 <= 2);
+                    invalid = !(0 <= mode && mode <= 7 && mode % 4 <= 3);
                     servicefilter.SetAudio2Mode(mode);
                 }
                 else {
