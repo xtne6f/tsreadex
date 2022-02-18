@@ -1,9 +1,7 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13)
 project(tsreadex LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
-
-# TODO: -municode when MINGW_PREFIX
 
 set(TSREADEX_LIBRARY_SRC util.cpp id3conv.cpp servicefilter.cpp aac.cpp huffman.cpp traceb24.cpp)
 set(TSREADEX_LIBRARY_HDR util.hpp id3conv.hpp servicefilter.hpp aac.hpp huffman.hpp traceb24.hpp)
@@ -16,3 +14,6 @@ export(TARGETS tsreadexlib NAMESPACE tsreadex FILE ${PROJECT_BINARY_DIR}/tsreade
 
 add_executable(tsreadex tsreadex.cpp ${TSREADEX_LIBRARY_SRC})
 
+if(MINGW)
+  target_link_options(tsreadex PRIVATE -municode -static)
+endif()
