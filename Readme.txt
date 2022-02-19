@@ -55,7 +55,7 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   +4のとき、モノラルであればステレオにする(AACのみ)。
   +8のとき、デュアルモノ(ARIB STD-B32)を2つのモノラル音声に分離し、右音声を第2音声として扱う(AACのみ)。
 
--b aud2, range=0 or 1 or 2 [+4], default=0
+-b aud2, range=0 or 1 or 2 or 3 [+4], default=0
   第2音声をそのままか、補完するか、削除するか、第1音声をコピーするか。
   1のとき、ストリームが存在しなければPMTの項目を補って無音のAACストリームを挿入する。
   3のとき、ストリームが存在しなければ第1音声をコピーする。
