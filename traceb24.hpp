@@ -36,7 +36,7 @@ private:
     void CheckPmt(const PSI &psi);
     void OutputPrivateDataPes(const std::vector<uint8_t> &pes,
                               std::vector<uint16_t> &drcsList, LANG_TAG_TYPE (&langTags)[8]);
-    static PARSE_PRIVATE_DATA_RESULT ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize,
+    static PARSE_PRIVATE_DATA_RESULT ParsePrivateData(std::vector<uint8_t> &buf, std::vector<int> &textPosList, const uint8_t *data, size_t dataSize,
                                                       std::vector<uint16_t> &drcsList, LANG_TAG_TYPE (&langTags)[8]);
 
     FILE *m_fp;
@@ -54,6 +54,7 @@ private:
     int m_pcrPid;
     int64_t m_pcr;
     std::vector<uint8_t> m_buf;
+    std::vector<int> m_intBuf;
 };
 
 #endif

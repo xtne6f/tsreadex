@@ -76,7 +76,7 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   - 初めて現れたPCRのタイムスタンプ
     pcrpid=0x{4桁PID};pcr={10桁タイムスタンプ}
   - エスケープしたARIB字幕のデータとそのPTS
-    pts={10桁タイムスタンプ};pcrrel=[+-]{7桁PCRとの差};b24caption[0-8]={改行までデータ}
+    pts={10桁タイムスタンプ};pcrrel=[+-]{7桁PCRとの差}[;text={可読な文字列の位置},..];b24caption[0-8]={改行までデータ}
     # [0-8]はそれぞれ字幕管理と字幕文第1～8言語
     # 字幕データはARIB STD-B24のデータグループ(data_group)構造を原則 %{2桁HEX} でエスケープして表現したもの
     # ただし、data_group_sizeおよびCRC_16フィールドは取り除かれる
@@ -86,7 +86,7 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
     # %+{ および %+} の括弧の区間はBase64エンコードされている(DRCSデータに使用)
     # 字幕本文はARIB STD-B24のUCSの規定に沿ってできるだけUTF-8に変換される
   - エスケープしたARIB文字スーパーのデータ
-    pts={10桁タイムスタンプ};pcrrel=+0000000;b24superimpose[0-8]={改行までデータ}
+    pts={10桁タイムスタンプ};pcrrel=+0000000[;text={可読な文字列の位置},..];b24superimpose[0-8]={改行までデータ}
     # PTSにはPCRタイムスタンプが使われる
     # ほかARIB字幕と同様
   - エスケープ処理に失敗したとき

@@ -198,16 +198,21 @@ void CTraceB24Caption::OutputPrivateDataPes(const std::vector<uint8_t> &pes,
         return;
     }
 
-    PARSE_PRIVATE_DATA_RESULT ret = ParsePrivateData(m_buf, pes.data() + payloadPos, pes.size() - payloadPos, drcsList, langTags);
+    PARSE_PRIVATE_DATA_RESULT ret = ParsePrivateData(m_buf, m_intBuf, pes.data() + payloadPos, pes.size() - payloadPos, drcsList, langTags);
     if (ret != PARSE_PRIVATE_DATA_FAILED_NEED_MANAGEMENT) {
         int64_t ptsPcrDiff = (0x200000000 + pts - m_pcr) & 0x1ffffffff;
         if (ptsPcrDiff >= 0x100000000) {
             ptsPcrDiff -= 0x200000000;
         }
-        fprintf(m_fp, "pts=%010lld;pcrrel=%+08d;b24%s",
+        fprintf(m_fp, "pts=%010lld;pcrrel=%+08d",
                 static_cast<long long>(pts),
-                static_cast<int>(m_pcr < 0 ? -9999999 : std::min<int64_t>(std::max<int64_t>(ptsPcrDiff, -9999999), 9999999)),
-                dataIdentifier == 0x81 ? "superimpose" : "caption");
+                static_cast<int>(m_pcr < 0 ? -9999999 : std::min<int64_t>(std::max<int64_t>(ptsPcrDiff, -9999999), 9999999)));
+        if (ret == PARSE_PRIVATE_DATA_SUCCEEDED) {
+            for (size_t i = 0; i + 1 < m_intBuf.size(); ++i) {
+                fprintf(m_fp, "%s%d", i == 0 ? ";text=" : ",", m_intBuf[i + 1] - m_intBuf[i]);
+            }
+        }
+        fprintf(m_fp, ";b24%s", dataIdentifier == 0x81 ? "superimpose" : "caption");
         if (ret == PARSE_PRIVATE_DATA_SUCCEEDED) {
             m_buf.push_back('\n');
             fwrite(m_buf.data(), 1, m_buf.size(), m_fp);
@@ -334,8 +339,21 @@ void InitializeArib8(std::pair<GS_CLASS, uint8_t> (&gbuf)[4], int &gl, int &gr, 
     gr = 2;
 }
 
-void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t *dataEnd, const std::vector<uint16_t> &drcsList,
-                  std::pair<GS_CLASS, uint8_t> (&gbuf)[4], int &gl, int &gr, bool isLatin)
+void CheckReadableTextPosList(std::vector<int> &textPosList, const std::vector<uint8_t> &buf, bool isNextReadable)
+{
+    if ((textPosList.size() % 2 != 0) == isNextReadable) {
+        int codeCount = 0;
+        for (size_t i = 0; i < buf.size(); ++i) {
+            if ((buf[i] & 0xc0) != 0x80) {
+                ++codeCount;
+            }
+        }
+        textPosList.push_back(codeCount);
+    }
+}
+
+void AnalizeArib8(std::vector<uint8_t> &buf, std::vector<int> &textPosList, const uint8_t *&data, const uint8_t *dataEnd,
+                  const std::vector<uint16_t> &drcsList, std::pair<GS_CLASS, uint8_t> (&gbuf)[4], int &gl, int &gr, bool isLatin)
 {
     std::pair<GS_CLASS, uint8_t> *gss = nullptr;
     while (data != dataEnd) {
@@ -403,6 +421,7 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
                 gss = &gbuf[3];
             }
             else if (b != 0) {
+                CheckReadableTextPosList(textPosList, buf, b == 0x20);
                 AddChar(buf, b);
                 if (b == 0x0c) {
                     // CS
@@ -435,13 +454,16 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
             }
             else {
                 if (b == 0x7f) {
+                    CheckReadableTextPosList(textPosList, buf, false);
                     AddChar(buf, b);
                 }
                 else if (b == 0xa0) {
+                    CheckReadableTextPosList(textPosList, buf, true);
                     AddChar32(buf, U'\u00A0');
                 }
                 else {
                     // caret notation
+                    CheckReadableTextPosList(textPosList, buf, false);
                     buf.push_back('%');
                     AddChar(buf, '^');
                     AddChar(buf, b - 0x40);
@@ -493,6 +515,7 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
             gss = nullptr;
             b &= 0x7f;
             if (g.first == GS_1BYTE_G) {
+                CheckReadableTextPosList(textPosList, buf, true);
                 if (g.second == GS_ASCII || g.second == GS_PROP_ASCII) {
                     if (isLatin) {
                         AddChar(buf, b);
@@ -511,6 +534,7 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
                 }
             }
             else if (g.first == GS_2BYTE_G) {
+                CheckReadableTextPosList(textPosList, buf, true);
                 uint8_t c = ReadByte(data, dataEnd) & 0x7f;
                 if (g.second == GS_JIS_KANJI1 ||
                     g.second == GS_JIS_KANJI2 ||
@@ -545,12 +569,13 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
                             x = static_cast<char32_t>(it - 1 - drcsList.begin() + 0xec00);
                         }
                     }
+                    CheckReadableTextPosList(textPosList, buf, true);
                     AddChar32(buf, x);
                 }
                 else if (g.second == GS_MACRO) {
                     if (0x60 <= b && b <= 0x6f) {
                         const uint8_t *macro = DefaultMacro[b & 0x0f];
-                        AnalizeArib8(buf, macro, macro + sizeof(DefaultMacro[0]), drcsList, gbuf, gl, gr, isLatin);
+                        AnalizeArib8(buf, textPosList, macro, macro + sizeof(DefaultMacro[0]), drcsList, gbuf, gl, gr, isLatin);
                     }
                     else {
                         AddChar32(buf, U'\uFFFD');
@@ -572,6 +597,7 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
                             x = static_cast<char32_t>(it - 1 - drcsList.begin() + 0xec00);
                         }
                     }
+                    CheckReadableTextPosList(textPosList, buf, true);
                     AddChar32(buf, x);
                 }
                 else {
@@ -585,12 +611,14 @@ void AnalizeArib8(std::vector<uint8_t> &buf, const uint8_t *&data, const uint8_t
     }
 }
 
-void AddArib8AsUtf8(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize, const std::vector<uint16_t> &drcsList, bool isLatin)
+void AddArib8AsUtf8(std::vector<uint8_t> &buf, std::vector<int> &textPosList, const uint8_t *data, size_t dataSize,
+                    const std::vector<uint16_t> &drcsList, bool isLatin)
 {
     std::pair<GS_CLASS, uint8_t> gbuf[4];
     int gl, gr;
     InitializeArib8(gbuf, gl, gr, isLatin);
-    AnalizeArib8(buf, data, data + dataSize, drcsList, gbuf, gl, gr, isLatin);
+    AnalizeArib8(buf, textPosList, data, data + dataSize, drcsList, gbuf, gl, gr, isLatin);
+    CheckReadableTextPosList(textPosList, buf, false);
 }
 
 size_t AddEscapedData(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize)
@@ -636,7 +664,7 @@ void AddUcs(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize)
 }
 
 CTraceB24Caption::PARSE_PRIVATE_DATA_RESULT
-CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *data, size_t dataSize,
+CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, std::vector<int> &textPosList, const uint8_t *data, size_t dataSize,
                                    std::vector<uint16_t> &drcsList, LANG_TAG_TYPE (&langTags)[8])
 {
     const uint8_t BEGIN_UNIT_BRACE[] = {'%', '=', '{'};
@@ -670,6 +698,8 @@ CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *dat
     buf.clear();
     buf.push_back('0' + dgiType);
     buf.push_back('=');
+    textPosList.clear();
+    CheckReadableTextPosList(textPosList, buf, false);
     pos += AddEscapedData(buf, data + pos, 3);
     // omit data_group_size
     pos += 2;
@@ -758,7 +788,7 @@ CTraceB24Caption::ParsePrivateData(std::vector<uint8_t> &buf, const uint8_t *dat
         if (unitParameter == 0x20) {
             // Statement body
             if (lang == LANG_TAG_ARIB8 || lang == LANG_TAG_ARIB8_LATIN) {
-                AddArib8AsUtf8(buf, data + pos, dataUnitSize, drcsList, lang == LANG_TAG_ARIB8_LATIN);
+                AddArib8AsUtf8(buf, textPosList, data + pos, dataUnitSize, drcsList, lang == LANG_TAG_ARIB8_LATIN);
                 pos += dataUnitSize;
             }
             else if (lang == LANG_TAG_UCS) {
