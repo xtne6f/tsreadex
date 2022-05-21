@@ -57,10 +57,8 @@ int extract_psi(PSI *psi, const uint8_t *payload, int payload_size, int unit_sta
             return 1;
         }
     }
-    if (copy_size > 0 && copy_pos < payload_size) {
-        if (copy_size > static_cast<int>(sizeof(psi->data)) - psi->data_count) {
-            copy_size = static_cast<int>(sizeof(psi->data)) - psi->data_count;
-        }
+    if (copy_size > 0 && copy_pos + copy_size <= payload_size) {
+        copy_size = std::min(copy_size, static_cast<int>(sizeof(psi->data)) - psi->data_count);
         std::copy(payload + copy_pos, payload + copy_pos + copy_size, psi->data + psi->data_count);
         psi->data_count += copy_size;
     }
