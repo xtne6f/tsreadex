@@ -308,7 +308,7 @@ void CServiceFilter::AddPmt(const PSI &psi)
     // PCR_PID=0x01ff
     m_buf[9] = 0xe1;
     m_buf[10] = 0xff;
-    m_buf[11] = 0xc0 | static_cast<uint8_t>(programInfoLength >> 8);
+    m_buf[11] = 0xf0 | static_cast<uint8_t>(programInfoLength >> 8);
     m_buf[12] = static_cast<uint8_t>(programInfoLength);
     // Copy 1st descriptor loop
     m_buf.insert(m_buf.end(), table + 12, table + pos);
