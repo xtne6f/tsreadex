@@ -431,7 +431,7 @@ int main(int argc, char **argv)
             if (bufPos < 0) {
                 bufPos = resync_ts(buf, bufCount, &unitSize);
             }
-            for (int i = bufPos; i + 188 <= bufCount; i += unitSize) {
+            for (int i = bufPos; unitSize != 0 && i + unitSize <= bufCount; i += unitSize) {
                 if (excludePidSet.count(extract_ts_header_pid(buf + i)) == 0) {
                     servicefilter.AddPacket(buf + i);
                 }
@@ -470,10 +470,15 @@ int main(int argc, char **argv)
             if (completed) {
                 break;
             }
-            if ((bufPos != 0 || bufCount >= 188) && (bufCount - bufPos) % 188 != 0) {
-                std::copy(buf + bufPos + (bufCount - bufPos) / 188 * 188, buf + bufCount, buf);
+            if (unitSize == 0) {
+                bufCount = 0;
             }
-            bufCount = (bufCount - bufPos) % 188;
+            else {
+                if ((bufPos != 0 || bufCount >= unitSize) && (bufCount - bufPos) % unitSize != 0) {
+                    std::copy(buf + bufPos + (bufCount - bufPos) / unitSize * unitSize, buf + bufCount, buf);
+                }
+                bufCount = (bufCount - bufPos) % unitSize;
+            }
         }
 
         if (limitReadBytesPerSec != 0) {
