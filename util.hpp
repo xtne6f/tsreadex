@@ -1,6 +1,7 @@
 #ifndef INCLUDE_UTIL_HPP
 #define INCLUDE_UTIL_HPP
 
+#include <stddef.h>
 #include <stdint.h>
 #include <vector>
 

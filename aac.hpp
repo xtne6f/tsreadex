@@ -1,6 +1,7 @@
 #ifndef INCLUDE_AAC_HPP
 #define INCLUDE_AAC_HPP
 
+#include <stddef.h>
 #include <stdint.h>
 #include <vector>
 
