@@ -11,6 +11,8 @@ CServiceFilter::CServiceFilter()
     , m_audio1MuxDualMono(false)
     , m_captionMode(0)
     , m_superimposeMode(0)
+    , m_captionInsertManagementPacket(false)
+    , m_superimposeInsertManagementPacket(false)
     , m_videoPid(0)
     , m_audio1Pid(0)
     , m_audio2Pid(0)
@@ -24,11 +26,15 @@ CServiceFilter::CServiceFilter()
     , m_pmtCounter(0)
     , m_audio1PesCounter(0)
     , m_audio2PesCounter(0)
+    , m_captionPesCounter(0xff)
+    , m_superimposePesCounter(0xff)
     , m_isAudio1DualMono(false)
     , m_audio1Pts(-1)
     , m_audio2Pts(-1)
     , m_audio1PtsPcrDiff(0)
     , m_audio2PtsPcrDiff(-1)
+    , m_captionManagementPcr(-1)
+    , m_superimposeManagementPcr(-1)
 {
     static const PAT zeroPat = {};
     m_pat = zeroPat;
@@ -46,6 +52,18 @@ void CServiceFilter::SetAudio2Mode(int mode)
 {
     m_audio2Mode = mode % 4;
     m_audio2MuxToStereo = !!(mode & 4);
+}
+
+void CServiceFilter::SetCaptionMode(int mode)
+{
+    m_captionMode = mode % 4;
+    m_captionInsertManagementPacket = !!(mode & 4);
+}
+
+void CServiceFilter::SetSuperimposeMode(int mode)
+{
+    m_superimposeMode = mode % 4;
+    m_superimposeInsertManagementPacket = !!(mode & 4);
 }
 
 void CServiceFilter::AddPacket(const uint8_t *packet)
@@ -117,6 +135,39 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                                 m_audio2PtsPcrDiff = m_audio1PtsPcrDiff;
                             }
                             AddAudioPesPackets(1, (m_pcr + m_audio2PtsPcrDiff) & 0x1ffffffff, m_audio2Pts, m_audio2PesCounter);
+                        }
+
+                        static const int INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC = 15;
+                        static const int INSERT_MANAGEMENT_INTERVAL_SEC = INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC - 5;
+                        if (m_captionManagementPcr >= 0 &&
+                            m_captionInsertManagementPacket &&
+                            (m_captionPid != 0 || m_captionMode == 1)) {
+                            int64_t pcrDiff = (0x200000000 + m_pcr - m_captionManagementPcr) & 0x1ffffffff;
+                            if (pcrDiff > 90000 * INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC) {
+                                if (pcrDiff < 90000 * INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC * 2) {
+                                    m_captionPesCounter = (m_captionPesCounter + 1) & 0x0f;
+                                    AddCaptionManagementPesPacket(m_pcr, m_captionPesCounter);
+                                }
+                                m_captionManagementPcr = (0x200000000 + m_pcr - 90000 * INSERT_MANAGEMENT_INTERVAL_SEC) & 0x1ffffffff;
+                            }
+                        }
+                        else {
+                            m_captionManagementPcr = m_pcr;
+                        }
+                        if (m_superimposeManagementPcr >= 0 &&
+                            m_superimposeInsertManagementPacket &&
+                            (m_superimposePid != 0 || m_superimposeMode == 1)) {
+                            int64_t pcrDiff = (0x200000000 + m_pcr - m_superimposeManagementPcr) & 0x1ffffffff;
+                            if (pcrDiff > 90000 * INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC) {
+                                if (pcrDiff < 90000 * INSERT_MANAGEMENT_DETERMINE_ABSENCE_SEC * 2) {
+                                    m_superimposePesCounter = (m_superimposePesCounter + 1) & 0x0f;
+                                    AddSuperimposeManagementPesPacket(m_superimposePesCounter);
+                                }
+                                m_superimposeManagementPcr = (0x200000000 + m_pcr - 90000 * INSERT_MANAGEMENT_INTERVAL_SEC) & 0x1ffffffff;
+                            }
+                        }
+                        else {
+                            m_superimposeManagementPcr = m_pcr;
                         }
                     }
                 }
@@ -195,10 +246,14 @@ void CServiceFilter::AddPacket(const uint8_t *packet)
                 }
             }
             else if (pid == m_captionPid) {
-                ChangePidAndAddPacket(packet, 0x0130);
+                m_captionManagementPcr = m_pcr;
+                m_captionPesCounter = m_captionPesCounter > 0x0f ? 0x10 | (counter & 0x0f) : (m_captionPesCounter + 1) & 0x0f;
+                ChangePidAndAddPacket(packet, 0x0130, m_captionPesCounter & 0x0f);
             }
             else if (pid == m_superimposePid) {
-                ChangePidAndAddPacket(packet, 0x0138);
+                m_superimposeManagementPcr = m_pcr;
+                m_superimposePesCounter = m_superimposePesCounter > 0x0f ? 0x10 | (counter & 0x0f) : (m_superimposePesCounter + 1) & 0x0f;
+                ChangePidAndAddPacket(packet, 0x0138, m_superimposePesCounter & 0x0f);
             }
             else if (pid < 0x0030) {
                 m_packets.insert(m_packets.end(), packet, packet + 188);
@@ -602,6 +657,67 @@ void CServiceFilter::ChangePidAndAddPacket(const uint8_t *packet, int pid, uint8
     m_packets.push_back(static_cast<uint8_t>(pid));
     m_packets.push_back(counter > 0x0f ? packet[3] : ((packet[3] & 0xf0) | counter));
     m_packets.insert(m_packets.end(), packet + 4, packet + 188);
+}
+
+void CServiceFilter::AddCaptionManagementPesPacket(int64_t pts, uint8_t counter)
+{
+    static const uint8_t SYNCHRONOUS_PES_JPN_MANAGEMENT[20] = {
+        0x80, 0xff, 0xf0, 0x80, 0x00, 0x00, 0x00, 0x0a,
+        0x3f, 0x01, 0x1a, 0x6a, 0x70, 0x6e, 0x80, 0x00, 0x00, 0x00,
+        0xe4, 0x6a
+    };
+    m_packets.push_back(0x47);
+    // PID=0x0130
+    m_packets.push_back(0x41);
+    m_packets.push_back(0x30);
+    m_packets.push_back(0x30 | counter);
+    m_packets.push_back(188 - 5 - (6 + 28));
+    m_packets.push_back(0x00);
+    // stuffing
+    m_packets.resize(m_packets.size() + 188 - 6 - (6 + 28), 0xff);
+    // PES
+    m_packets.push_back(0);
+    m_packets.push_back(0);
+    m_packets.push_back(1);
+    m_packets.push_back(0xbd);
+    m_packets.push_back(0);
+    m_packets.push_back(28);
+    m_packets.push_back(0x80);
+    // has PTS
+    m_packets.push_back(0x80);
+    m_packets.push_back(5);
+    m_packets.push_back(static_cast<uint8_t>(pts >> 29) | 0x21); // 3 bits
+    m_packets.push_back(static_cast<uint8_t>(pts >> 22)); // 8 bits
+    m_packets.push_back(static_cast<uint8_t>(pts >> 14) | 1); // 7 bits
+    m_packets.push_back(static_cast<uint8_t>(pts >> 7)); // 8 bits
+    m_packets.push_back(static_cast<uint8_t>(pts << 1) | 1); // 7 bits
+    m_packets.insert(m_packets.end(), SYNCHRONOUS_PES_JPN_MANAGEMENT, SYNCHRONOUS_PES_JPN_MANAGEMENT + 20);
+}
+
+void CServiceFilter::AddSuperimposeManagementPesPacket(uint8_t counter)
+{
+    static const uint8_t ASYNCHRONOUS_PES_JPN_MANAGEMENT[20] = {
+        0x81, 0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x0a,
+        0x3f, 0x01, 0x12, 0x6a, 0x70, 0x6e, 0x80, 0x00, 0x00, 0x00,
+        0xae, 0xa2
+    };
+    m_packets.push_back(0x47);
+    // PID=0x0138
+    m_packets.push_back(0x41);
+    m_packets.push_back(0x38);
+    m_packets.push_back(0x30 | counter);
+    m_packets.push_back(188 - 5 - (6 + 20));
+    m_packets.push_back(0x00);
+    // stuffing
+    m_packets.resize(m_packets.size() + 188 - 6 - (6 + 20), 0xff);
+    // PES
+    m_packets.push_back(0);
+    m_packets.push_back(0);
+    m_packets.push_back(1);
+    m_packets.push_back(0xbf);
+    m_packets.push_back(0);
+    m_packets.push_back(20);
+    m_packets.insert(m_packets.end(), ASYNCHRONOUS_PES_JPN_MANAGEMENT, ASYNCHRONOUS_PES_JPN_MANAGEMENT + 20);
 }
 
 void CServiceFilter::AddAudioPesPackets(uint8_t index, int64_t targetPts, int64_t &pts, uint8_t &counter)

@@ -217,7 +217,7 @@ int main(int argc, char **argv)
                     servicefilter.SetAudio2Mode(mode);
                 }
                 else {
-                    invalid = !(0 <= mode && mode <= 2);
+                    invalid = !(0 <= mode && mode <= 6 && mode % 4 <= 2);
                     if (c == 'c') {
                         servicefilter.SetCaptionMode(mode);
                     }
