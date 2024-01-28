@@ -384,7 +384,7 @@ void AnalizeArib8(std::vector<uint8_t> &buf, std::vector<int> &textPosList, cons
                             gbuf[b - 0x28] = std::make_pair(GS_2BYTE_DRCS, ReadByte(data, dataEnd));
                         }
                         else if (0x29 <= b && b <= 0x2b) {
-                            gbuf[b - 0x28] = std::make_pair(GS_2BYTE_DRCS, c);
+                            gbuf[b - 0x28] = std::make_pair(GS_2BYTE_G, c);
                         }
                     }
                     else {
