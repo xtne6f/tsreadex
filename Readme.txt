@@ -103,7 +103,7 @@ tsreadex [-z ignored][-s seek][-l limit][-t timeout][-m mode][-x pids][-n prog_n
   いない入力に対処するもので、普通は使わない。
   +4のとき、変換後のストリームに規格外の5バイトのデータを追加する。これはffmpeg 4.4時点のlibavformat/mpegts.cに存在する
   バグを打ち消すためのもので、node-arib-subtitle-timedmetadaterの手法に基づく。出力をffmpegなどに渡す場合にのみ使用する
-  こと。
+  こと。このバグはffmpeg 6.1で修正された。
   +8のとき、変換後のストリームのPTS(Presentation Timestamp)が単調増加となるように調整する。ffmpeg 4.4時点においてPTSを
   DTS(Decoding Timestamp)とみなしタイムスタンプが遡るとエラーとなるのを防ぐもの。ARIB字幕/文字スーパーの両方が存在する場
   合で、出力をffmpegなどに渡す場合に使用する。
