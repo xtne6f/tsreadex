@@ -64,6 +64,7 @@ int ReadFileToBuffer(HANDLE file, uint8_t *buf, size_t count, HANDLE asyncContex
     OVERLAPPED ol = {};
     DWORD nRead;
     if (asyncContext) {
+        // For asynchronous, returns -1 for EOF
         ol.hEvent = asyncContext;
         if (ReadFile(file, buf, static_cast<DWORD>(count), nullptr, &ol)) {
             return GetOverlappedResult(file, &ol, &nRead, FALSE) ? nRead : -1;
@@ -79,6 +80,7 @@ int ReadFileToBuffer(HANDLE file, uint8_t *buf, size_t count, HANDLE asyncContex
         }
     }
     else if (ReadFile(file, buf, static_cast<DWORD>(count), &nRead, nullptr)) {
+        // For synchronous, 0 means EOF
         return nRead;
     }
     return -1;
@@ -105,12 +107,19 @@ int64_t SeekFile(int file, int64_t offset)
 }
 
 template<class P>
-int ReadFileToBuffer(int file, uint8_t *buf, size_t count, bool asyncContext, P asyncCancelProc)
+int ReadFileToBuffer(int file, uint8_t *buf, size_t count, int &asyncContext, P asyncCancelProc)
 {
     for (;;) {
         int ret = static_cast<int>(read(file, buf, count));
         if (ret >= 0 || !asyncContext || (errno != EAGAIN && errno != EWOULDBLOCK) || asyncCancelProc()) {
-            return ret;
+            // Asynchronous FIFO reading can be opened before a writer opens it, then read() returns 0.
+            if (asyncContext && ret > 0) {
+                // Connected.
+                asyncContext = 2;
+            }
+            // For asynchronous, returns -1 for EOF
+            // For synchronous, 0 means EOF
+            return asyncContext == 2 && ret == 0 ? -1 : ret;
         }
         fd_set rfd;
         FD_ZERO(&rfd);
@@ -123,7 +132,7 @@ int ReadFileToBuffer(int file, uint8_t *buf, size_t count, bool asyncContext, P 
     }
 }
 
-void CloseFile(int file, bool asyncContext)
+void CloseFile(int file, int asyncContext)
 {
     static_cast<void>(asyncContext);
     if (file >= 0) {
@@ -296,7 +305,8 @@ int main(int argc, char **argv)
     }
 #else
     bool traceToStdout = traceName[0] == '-' && !traceName[1];
-    bool asyncContext = timeoutMode == 2;
+    // 0: synchronous, 1: not connected yet, 2: connected.
+    int asyncContext = timeoutMode == 2;
     int file;
     int openedFile = -1;
     if (srcName[0] == '-' && !srcName[1]) {
@@ -407,6 +417,11 @@ int main(int argc, char **argv)
             if (n < 0) {
                 completed = true;
             }
+#ifndef _WIN32
+            else if (n <= 0) {
+                retry = true;
+            }
+#endif
             else {
                 bufCount += n;
                 filePos += n;
@@ -420,7 +435,7 @@ int main(int argc, char **argv)
             }
             else {
                 SleepFor(std::chrono::milliseconds(200));
-                if (SeekFile(file, filePos) != filePos) {
+                if (timeoutMode != 2 && SeekFile(file, filePos) != filePos) {
                     fprintf(stderr, "Warning: seek failed.\n");
                     completed = true;
                 }
